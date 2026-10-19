@@ -30,7 +30,7 @@ MAX_ROWS = 1000
 PROJECT = {
     "title": "Conception d'une Modern Data Platform avec architecture Médaillon "
              "et application Text-to-SQL basée sur l'IA",
-    "student": "Prénom NOM",
+    "student": "Ibrahima Lang Diop",
     "supervisor": "Dr. Jean Gane SARR",
     "degree": "Master 2 Business Intelligence",
     "department": "Maths-Info · Section Informatique",
