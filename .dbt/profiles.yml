@@ -1,0 +1,17 @@
+transform:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: dev.duckdb
+      threads: 4
+    prod:
+      type: snowflake
+      account: "{{ env_var('SF_ACCOUNT') }}"
+      user: "{{ env_var('SF_USER') }}"
+      password: "{{ env_var('SF_PASSWORD') }}"
+      role: PFPB_ROLE
+      warehouse: WH_TRANSFORM
+      database: PROJET_FINAL_PRATIQUE_BI
+      schema: SILVER
+      threads: 4

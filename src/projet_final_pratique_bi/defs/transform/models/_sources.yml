@@ -1,0 +1,19 @@
+version: 2
+ 
+sources:
+  - name: bronze
+    database: PROJET_FINAL_PRATIQUE_BI
+    schema: Bronze
+    tables:
+      - name: Customers
+        description: "Customers table"
+      - name: Orders
+        description: "Orders table"
+      - name: OrderLines
+        description: "OrderLines table"
+      - name: StockItems
+        description: "StockItems table"
+      - name: Cities
+        description: "Cities table"
+      - name: People
+        description: "People table"
