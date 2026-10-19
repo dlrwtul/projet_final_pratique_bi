@@ -592,7 +592,7 @@ Question : {question}"""
     cur = get_conn().cursor()
     cur.execute("select snowflake.cortex.complete(%s, %s)", (MODEL, prompt))
     sql = cur.fetchone()[0]
-    return re.sub(r"```(sql)?", "", sql).strip().rstrip(";")
+    return re.sub(r"`{3}(sql)?", "", sql).strip().rstrip(";")
 
 
 st.title("Wide World Importers — posez votre question")
