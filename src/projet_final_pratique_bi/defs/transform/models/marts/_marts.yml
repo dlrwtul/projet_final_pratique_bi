@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: fct_sales
+    description: "Ventes, une ligne par ligne de commande"
+    columns:
+      - name: order_line_id
+        data_tests: [unique, not_null]
+      - name: sales_amount_excl_tax
+        description: "Chiffre d'affaires HT = quantity * unit_price"
+      - name: product_id
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_products'), field: product_id}
+      - name: customer_id
+        data_tests:
+          - relationships:
+              arguments: {to: ref('dim_customers'), field: customer_id}
+  - name: fct_invoice_lines
+    description: "Lignes facturées ; line_profit = bénéfice de la ligne"
+    columns:
+      - name: invoice_line_id
+        data_tests: [unique, not_null]

@@ -7,15 +7,7 @@ with source as (
 
 renamed as (
 
-    select
-        CityID    as city_id,
-
-        CityName    as city_name,
-
-        Location  as location,
-
-        LatestRecordedPopulation as latest_recorded_population
-
+    select city_id, city_name, state_province_id, latest_recorded_population
     from source
 )
 

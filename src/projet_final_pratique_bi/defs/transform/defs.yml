@@ -1,0 +1,8 @@
+type: dagster_dbt.DbtProjectComponent
+
+attributes:
+  project:
+    project_dir: "{{ context.project_root }}/src/projet_final_pratique_bi/defs/transform"
+    profiles_dir: "{{ context.project_root }}/src/projet_final_pratique_bi/defs/transform"
+  cli_args:
+    - build

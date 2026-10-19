@@ -8,14 +8,12 @@ with source as (
 renamed as (
 
     select
-        OrderID    as order_id,
-
-        CustomerID    as customer_id,
-
-        ContactPersonID  as contact_person_id,
-
-        OrderDate as order_date
-
+    order_id,
+    customer_id,
+    salesperson_person_id,
+    contact_person_id,
+    cast(order_date as date)             as order_date,
+    cast(expected_delivery_date as date) as expected_delivery_date
     from source
 )
 

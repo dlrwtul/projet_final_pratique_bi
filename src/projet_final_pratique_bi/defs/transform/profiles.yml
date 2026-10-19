@@ -1,9 +1,10 @@
 transform:
-  target: dev
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
   outputs:
     dev:
       type: duckdb
-      path: dev.duckdb
+      path: "{{ env_var('DUCKDB_PATH') }}"
+      schema: main
       threads: 4
     prod:
       type: snowflake
