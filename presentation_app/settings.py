@@ -11,7 +11,8 @@ USERS_DB_PATH = Path(os.getenv("APP_USERS_DB", APP_DIR / "data" / "users.db"))
 
 # "snowflake" (Cortex AI) si les identifiants Snowflake sont présents, sinon "duckdb" (mode local).
 BACKEND = os.getenv("APP_BACKEND") or ("snowflake" if os.getenv("SF_ACCOUNT") else "duckdb")
-DUCKDB_PATH = os.getenv("DUCKDB_PATH", str(ROOT_DIR / "warehouse.duckdb"))
+# expandvars/expanduser : un fichier .env ne remplace pas $HOME ni ~.
+DUCKDB_PATH = os.path.expanduser(os.path.expandvars(os.getenv("DUCKDB_PATH", str(ROOT_DIR / "warehouse.duckdb"))))
 
 SNOWFLAKE = {
     "account": os.getenv("SF_ACCOUNT"),

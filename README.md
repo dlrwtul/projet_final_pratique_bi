@@ -100,6 +100,10 @@ dg list defs                                    # les assets bronze/* apparaisse
 
 Astuce : ajouter `export DUCKDB_PATH=...` dans `~/.bashrc` pour ne pas le retaper.
 
+> Avec un fichier `.env` à la racine (chargé automatiquement par `dg dev`), écrire le chemin
+> **absolu** : `DUCKDB_PATH=/home/<utilisateur>/projet_final_pratique_bi/warehouse.duckdb`.
+> Un `.env` ne remplace pas `$HOME` ni `$PWD` (le projet tolère `$HOME`, pas `$PWD`).
+
 ---
 
 ## 4. Couches Silver et Gold : dbt

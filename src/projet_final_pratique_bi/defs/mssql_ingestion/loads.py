@@ -58,7 +58,9 @@ def wwi_source():
 mssql_source = wwi_source()
 
 if DEST == "duckdb":
-    destination = dlt.destinations.duckdb(os.getenv("DUCKDB_PATH", "warehouse.duckdb"))
+    # expandvars/expanduser : un fichier .env (chargé par Dagster) ne remplace pas $HOME ni ~.
+    duckdb_path = os.path.expanduser(os.path.expandvars(os.getenv("DUCKDB_PATH", "warehouse.duckdb")))
+    destination = dlt.destinations.duckdb(duckdb_path)
 else:
     destination = "snowflake"
 

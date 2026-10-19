@@ -3,7 +3,8 @@ transform:
   outputs:
     dev:
       type: duckdb
-      path: "{{ env_var('DUCKDB_PATH') }}"
+      # replace : un .env (chargé par Dagster) laisse « $HOME » tel quel dans la variable.
+      path: "{{ env_var('DUCKDB_PATH') | replace('$HOME', env_var('HOME')) }}"
       schema: main
       threads: 4
     prod:

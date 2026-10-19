@@ -210,3 +210,5 @@ dbt_internal_packages/
 *.duckdb.wal
 presentation_app/data/
 src/projet_final_pratique_bi/defs/transform/.user.yml
+# État local des composants Dagster (régénéré par dg)
+src/projet_final_pratique_bi/defs/.local_defs_state/
