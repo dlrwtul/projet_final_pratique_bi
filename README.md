@@ -9,41 +9,205 @@ SQL Server (WWI) --DLT--> BRONZE --dbt--> SILVER --dbt--> GOLD --Cortex AI--> St
                  \_______________ orchestré par Dagster _______________/
 ```
 
-## Installation
+Ce document reprend **toutes les commandes**, de la création du projet au lancement de
+l'application. Les captures du dossier `captures/` illustrent les étapes correspondantes.
+
+> Vous clonez simplement le dépôt ? Passez directement à [Démarrage rapide](#démarrage-rapide).
+
+---
+
+## 0. Prérequis
+
+- Ubuntu (ou WSL Ubuntu sous Windows), Python 3.10 à 3.14
+- [uv](https://docs.astral.sh/uv/) :
+  ```bash
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
+- SQL Server avec la base **WideWorldImporters** restaurée
+  (fichier `WideWorldImporters-Full.bak` des exemples officiels Microsoft, restauré avec SSMS
+  ou `sqlcmd`), joignable sur le port 1433
+- Un compte Snowflake (étape 6 et application en mode Cortex)
+
+---
+
+## 1. Créer le projet Dagster — *Captures 1 et 2*
 
 ```bash
-uv sync
+cd ~
+uvx create-dagster project projet_final_pratique_bi
+# « Run uv sync? » → y
+cd projet_final_pratique_bi
 source .venv/bin/activate
 ```
 
-Identifiants SQL Server / Snowflake pour DLT : `.dlt/secrets.toml` (non versionné).
+---
 
-## Pipeline de données
+## 2. Installer les dépendances — *Capture 3*
 
 ```bash
-export DUCKDB_PATH=$PWD/warehouse.duckdb   # mode local
-dg dev                                     # http://localhost:3000 → job pipeline_complet
+uv add "dlt[snowflake,duckdb,mssql]" pyodbc pymssql dagster-dlt
+uv add dagster-dbt dbt-core dbt-duckdb dbt-snowflake
+uv add streamlit snowflake-connector-python pandas bcrypt
 ```
 
-Pour Snowflake : `DLT_DESTINATION=snowflake`, `DBT_TARGET=prod`, `SF_ACCOUNT`, `SF_USER`, `SF_PASSWORD`.
+---
 
-## Application WWI Insight
+## 3. Couche Bronze : ingestion DLT
+
+### 3.1 Générer le composant DLT — *Capture 3*
 
 ```bash
+dg scaffold defs dagster_dlt.DltLoadCollectionComponent mssql_ingestion \
+  --source sql_database --destination snowflake
+```
+
+Cela crée `src/projet_final_pratique_bi/defs/mssql_ingestion/` (`defs.yaml`, `loads.py`).
+Le fichier `loads.py` de ce dépôt définit les 10 tables chargées (Customers, Orders,
+OrderLines, Invoices, InvoiceLines, StockItems, Cities, StateProvinces, Countries, People),
+le chargement incrémental (`merge` sur `LastEditedWhen`) et la destination
+(`DLT_DESTINATION=duckdb` ou `snowflake`).
+
+### 3.2 Identifiants — *Captures 4 et 5*
+
+Créer `.dlt/secrets.toml` **à la racine du projet** (dossier depuis lequel on lance `dg dev`).
+Ce fichier est ignoré par git : ne jamais le commiter.
+
+```toml
+[sources.sql_database.credentials]
+drivername = "mssql+pymssql"
+host = "<serveur_sql>"
+port = "1433"
+database = "WideWorldImporters"
+username = "<utilisateur>"
+password = "<mot_de_passe>"
+
+[destination.snowflake.credentials]
+database = "PROJET_FINAL_PRATIQUE_BI"
+username = "<utilisateur_snowflake>"
+password = "<mot_de_passe_snowflake>"
+host = "<identifiant_compte>"      # ex. abcdefg-xy12345
+warehouse = "WH_TRANSFORM"
+role = "PFPB_ROLE"
+```
+
+### 3.3 Premier chargement dans DuckDB — *Captures 6 et 7*
+
+```bash
+export DUCKDB_PATH=$PWD/warehouse.duckdb       # même fichier pour DLT, dbt et l'application
+DLT_DESTINATION=duckdb python src/projet_final_pratique_bi/defs/mssql_ingestion/loads.py
+dg list defs                                    # les assets bronze/* apparaissent
+```
+
+Astuce : ajouter `export DUCKDB_PATH=...` dans `~/.bashrc` pour ne pas le retaper.
+
+---
+
+## 4. Couches Silver et Gold : dbt
+
+### 4.1 Créer le projet dbt
+
+```bash
+cd src/projet_final_pratique_bi/defs
+dbt init transform --skip-profile-setup
+cd transform
+```
+
+Fichiers du dépôt à reprendre dans `transform/` :
+
+| Fichier | Rôle |
+|---|---|
+| `profiles.yml` | cible `dev` (DuckDB, `DUCKDB_PATH`) et `prod` (Snowflake, variables `SF_*`) |
+| `dbt_project.yml` | `staging` → vues dans le schéma `silver`, `marts` → tables dans `gold` |
+| `macros/generate_schema_name.sql` | schémas `silver` / `gold` exacts (sans préfixe) |
+| `models/_sources.yml` | tables Bronze (noms DLT en snake_case) |
+| `models/staging/*.sql` + `_staging.yml` | 7 modèles Silver + tests |
+| `models/marts/*.sql` + `_marts.yml` | `fct_sales`, `fct_invoice_lines`, `dim_customers`, `dim_products`, `dim_salespeople`, `dim_date` + tests |
+
+### 4.2 Construire et tester
+
+```bash
+dbt debug --profiles-dir .                 # vérifie la connexion
+dbt build --profiles-dir .                 # modèles + tests (31 OK attendus)
+dbt docs generate --profiles-dir . && dbt docs serve --profiles-dir .   # lineage, pour le rapport
+cd ../../../..                             # retour à la racine du projet
+```
+
+---
+
+## 5. Orchestration : Dagster
+
+Fichiers du dépôt :
+
+- `src/projet_final_pratique_bi/defs/transform/defs.yaml` : composant `dagster_dbt.DbtProjectComponent`
+  (attention : l'extension doit être **`.yaml`**, un `defs.yml` est ignoré par Dagster) ;
+- `src/projet_final_pratique_bi/defs/schedules.py` : job `pipeline_complet` (tous les assets)
+  et planification quotidienne à 2 h (Africa/Dakar).
+
+```bash
+dg check defs          # valide la configuration
+dg list defs           # bronze/*, silver/stg_*, gold/*, job et schedule
+dg dev                 # http://localhost:3000
+```
+
+Dans l'interface : **Assets → Global asset lineage → Materialize all** (ou **Jobs →
+pipeline_complet → Launchpad**), puis activer le schedule dans **Automation**.
+
+> DuckDB n'accepte qu'un seul écrivain : fermer DBeaver / l'application pendant un run.
+
+---
+
+## 6. Passage à Snowflake
+
+### 6.1 Préparer le compte (worksheet Snowsight, rôle ACCOUNTADMIN)
+
+```sql
+CREATE ROLE IF NOT EXISTS PFPB_ROLE;
+CREATE WAREHOUSE IF NOT EXISTS WH_TRANSFORM WAREHOUSE_SIZE = XSMALL AUTO_SUSPEND = 60 AUTO_RESUME = TRUE;
+CREATE DATABASE IF NOT EXISTS PROJET_FINAL_PRATIQUE_BI;
+CREATE SCHEMA IF NOT EXISTS PROJET_FINAL_PRATIQUE_BI.BRONZE;
+CREATE SCHEMA IF NOT EXISTS PROJET_FINAL_PRATIQUE_BI.SILVER;
+CREATE SCHEMA IF NOT EXISTS PROJET_FINAL_PRATIQUE_BI.GOLD;
+
+GRANT USAGE ON WAREHOUSE WH_TRANSFORM TO ROLE PFPB_ROLE;
+GRANT ALL ON DATABASE PROJET_FINAL_PRATIQUE_BI TO ROLE PFPB_ROLE;
+GRANT ALL ON ALL SCHEMAS IN DATABASE PROJET_FINAL_PRATIQUE_BI TO ROLE PFPB_ROLE;
+GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE PFPB_ROLE;
+GRANT ROLE PFPB_ROLE TO USER <utilisateur_snowflake>;
+```
+
+### 6.2 Lancer le pipeline sur Snowflake
+
+```bash
+export DLT_DESTINATION=snowflake
+export DBT_TARGET=prod
+export SF_ACCOUNT=<identifiant_compte> SF_USER=<utilisateur> SF_PASSWORD='<mot_de_passe>'
+dg dev                 # Materialize all → schémas BRONZE, SILVER, GOLD remplis dans Snowflake
+```
+
+---
+
+## 7. Application WWI Insight (Streamlit)
+
+```bash
+# Mode local : lit warehouse.duckdb (questions d'exemple + SQL manuel)
+export DUCKDB_PATH=$PWD/warehouse.duckdb
+streamlit run presentation_app/app.py           # http://localhost:8501
+
+# Mode Snowflake : génération SQL par Cortex AI pour n'importe quelle question
+export SF_ACCOUNT=<identifiant_compte> SF_USER=<utilisateur> SF_PASSWORD='<mot_de_passe>'
+export CORTEX_MODEL=mistral-large2              # optionnel (llama3.1-70b… selon la région)
 streamlit run presentation_app/app.py
 ```
 
-- **Mode local (DuckDB)** par défaut : lit `warehouse.duckdb` ; seules les questions d'exemple
-  sont traduites en SQL (Cortex n'existe que sur Snowflake), le SQL peut être écrit à la main.
-- **Mode Snowflake** dès que `SF_ACCOUNT` est défini : génération SQL par Cortex
-  (`CORTEX_MODEL`, défaut `mistral-large2`). Variables optionnelles : `SF_ROLE`,
-  `SF_WAREHOUSE`, `SF_DATABASE`.
-- Comptes, dossiers et analyses : base SQLite `presentation_app/data/users.db`
-  (mots de passe hachés avec bcrypt).
-- Seules les requêtes `SELECT` sont exécutées, limitées à 1 000 lignes.
+Parcours : accueil → **Se connecter** → onglet **Inscription** → espace d'analyse →
+poser une question (ou cliquer un exemple) → tableau / graphique / export CSV.
 
-Les informations de la page « À propos » (nom, encadrant, année) se modifient dans
-`presentation_app/settings.py` (`PROJECT`).
+- Comptes, dossiers et analyses : base SQLite `presentation_app/data/users.db`
+  (mots de passe hachés avec bcrypt, fichier ignoré par git).
+- Seules les requêtes `SELECT` sont exécutées, limitées à 1 000 lignes.
+- Nom, encadrant et année de la page « À propos » : `PROJECT` dans `presentation_app/settings.py`.
+- Variables optionnelles : `SF_ROLE`, `SF_WAREHOUSE`, `SF_DATABASE`, `APP_BACKEND`
+  (`duckdb` ou `snowflake`, pour forcer le mode), `APP_USERS_DB`.
 
 | Fichier | Rôle |
 |---|---|
@@ -52,3 +216,21 @@ Les informations de la page « À propos » (nom, encadrant, année) se modifien
 | `presentation_app/users_db.py` | utilisateurs, dossiers et analyses (SQLite) |
 | `presentation_app/ui.py` | thème, composants, graphiques |
 | `presentation_app/views/` | pages : accueil, connexion, espace d'analyse, à propos |
+
+---
+
+## Démarrage rapide
+
+Après un `git clone` du dépôt (SQL Server et `.dlt/secrets.toml` prêts) :
+
+```bash
+cd projet_final_pratique_bi
+uv sync && source .venv/bin/activate
+export DUCKDB_PATH=$PWD/warehouse.duckdb
+
+DLT_DESTINATION=duckdb python src/projet_final_pratique_bi/defs/mssql_ingestion/loads.py   # Bronze
+(cd src/projet_final_pratique_bi/defs/transform && dbt build --profiles-dir .)              # Silver + Gold
+streamlit run presentation_app/app.py                                                         # application
+```
+
+Ou, pour tout orchestrer : `dg dev` puis **Materialize all**.
