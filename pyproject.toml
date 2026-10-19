@@ -3,6 +3,7 @@ name = "projet_final_pratique_bi"
 requires-python = ">=3.10,<3.15"
 version = "0.1.0"
 dependencies = [
+    "bcrypt>=5.0.0",
     "dagster==1.13.17",
     "dagster-dbt>=0.29.17",
     "dagster-dlt>=0.29.17",

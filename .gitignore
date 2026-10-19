@@ -204,3 +204,9 @@ __marimo__/
 
 *.dlt
 dbt_internal_packages/
+
+# Données locales (entrepôt DuckDB, comptes de l'application, état dbt)
+*.duckdb
+*.duckdb.wal
+presentation_app/data/
+src/projet_final_pratique_bi/defs/transform/.user.yml
