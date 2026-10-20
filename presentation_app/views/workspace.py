@@ -177,9 +177,9 @@ def render() -> None:
                 if st.form_submit_button("Exécuter", type="primary"):
                     _ask(user, active["id"], question, sql)
 
-    if not warehouse.IS_SNOWFLAKE:
-        st.caption("Mode local DuckDB : seules les questions d'exemple sont traduites automatiquement. "
-                   "Configurez Snowflake (SF_ACCOUNT…) pour activer Cortex AI.")
+    if warehouse.generator() is None:
+        st.caption("Aucun modèle d'IA disponible : seules les questions d'exemple sont traduites "
+                   "automatiquement. Activez Cortex (Snowflake) ou lancez Ollama (`ollama serve`).")
     question = st.chat_input("Posez une question sur les données Wide World Importers…")
     if question:
         _ask(user, active["id"], question)

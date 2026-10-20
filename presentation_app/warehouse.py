@@ -1,17 +1,20 @@
-"""Accès à la couche Gold : génération SQL (Snowflake Cortex), contrôle et exécution."""
+"""Accès à la couche Gold : génération SQL (Snowflake Cortex ou Ollama), contrôle et exécution."""
+import json
 import re
+import urllib.request
 from datetime import date
 from decimal import Decimal
 
 import pandas as pd
 import streamlit as st
 
-from settings import BACKEND, CORTEX_MODEL, DUCKDB_PATH, MAX_ROWS, SNOWFLAKE
+from settings import (BACKEND, CORTEX_MODEL, DUCKDB_PATH, MAX_ROWS, OLLAMA_MODEL, OLLAMA_URL,
+                      SNOWFLAKE, SQL_GENERATOR)
 
 IS_SNOWFLAKE = BACKEND == "snowflake"
 
 # Questions de la consigne (et quelques autres) avec leur SQL, compatibles DuckDB et Snowflake.
-# En mode local (sans Cortex) ce sont les seules questions auxquelles l'application sait répondre.
+# Sans modèle d'IA disponible, ce sont les seules questions auxquelles l'application sait répondre.
 EXAMPLES = {
     "Quels sont les dix meilleurs clients par chiffre d'affaires ?": """
 select c.customer_name, sum(s.sales_amount_excl_tax) as chiffre_affaires
@@ -93,9 +96,9 @@ def _execute(sql: str, params: tuple = ()) -> pd.DataFrame:
 
 
 def backend_label() -> str:
-    if IS_SNOWFLAKE:
-        return f"SNOWFLAKE · GOLD · cortex/{CORTEX_MODEL}"
-    return "DUCKDB LOCAL · GOLD · exemples"
+    source = "SNOWFLAKE" if IS_SNOWFLAKE else "DUCKDB LOCAL"
+    model = {"cortex": f"cortex/{CORTEX_MODEL}", "ollama": f"ollama/{OLLAMA_MODEL}"}.get(generator(), "exemples")
+    return f"{source} · GOLD · {model}"
 
 
 # --- Schéma et génération -----------------------------------------------------
@@ -112,7 +115,7 @@ def gold_schema() -> str:
     )
 
 
-PROMPT = """Tu es un expert SQL Snowflake. Tu réponds aux questions sur l'entreprise
+PROMPT = """Tu es un expert SQL {dialect}. Tu réponds aux questions sur l'entreprise
 Wide World Importers à partir de ce schéma (couche GOLD) :
 
 {schema}
@@ -140,18 +143,70 @@ def example_sql(question: str) -> str | None:
     return None
 
 
+def _cortex(prompt: str) -> str:
+    df = _execute("select snowflake.cortex.complete(%s, %s) as sql", (CORTEX_MODEL, prompt))
+    return df.iloc[0, 0]
+
+
+def _ollama(prompt: str, timeout: int = 180) -> str:
+    body = json.dumps({"model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
+                       "options": {"temperature": 0}}).encode()
+    req = urllib.request.Request(f"{OLLAMA_URL}/api/generate", data=body,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.load(resp)["response"]
+
+
+def _cortex_available() -> bool:
+    if not IS_SNOWFLAKE:
+        return False
+    try:
+        _cortex("Réponds OK.")
+        return True
+    except Exception:  # compte d'essai, modèle absent de la région, droit CORTEX_USER manquant…
+        return False
+
+
+def _ollama_available() -> bool:
+    try:
+        with urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=2) as resp:
+            models = [m["name"] for m in json.load(resp).get("models", [])]
+    except Exception:
+        return False
+    return any(m == OLLAMA_MODEL or m.split(":")[0] == OLLAMA_MODEL for m in models)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def generator() -> str | None:
+    """Moteur de génération utilisé : "cortex", "ollama" ou None (exemples seulement)."""
+    if SQL_GENERATOR in ("cortex", "ollama"):
+        return SQL_GENERATOR
+    if SQL_GENERATOR == "none":
+        return None
+    if _cortex_available():
+        return "cortex"
+    if _ollama_available():
+        return "ollama"
+    return None
+
+
 def generate_sql(question: str) -> str:
     sql = example_sql(question)
     if sql:
         return sql
-    if not IS_SNOWFLAKE:
+    engine = generator()
+    if engine is None:
         raise QueryError(
-            "La génération par IA nécessite Snowflake Cortex. En mode local, "
-            "choisissez une question d'exemple ou écrivez directement le SQL."
+            "Aucun modèle d'IA disponible (Cortex indisponible, Ollama non démarré). "
+            "Choisissez une question d'exemple ou écrivez directement le SQL."
         )
-    prompt = PROMPT.format(schema=gold_schema(), max_rows=MAX_ROWS, question=question)
-    df = _execute("select snowflake.cortex.complete(%s, %s) as sql", (CORTEX_MODEL, prompt))
-    return extract_sql(df.iloc[0, 0])
+    prompt = PROMPT.format(dialect="Snowflake" if IS_SNOWFLAKE else "DuckDB",
+                           schema=gold_schema(), max_rows=MAX_ROWS, question=question)
+    try:
+        answer = _cortex(prompt) if engine == "cortex" else _ollama(prompt)
+    except Exception as exc:
+        raise QueryError(f"Le modèle {engine} n'a pas répondu : {exc}") from exc
+    return extract_sql(answer)
 
 
 def extract_sql(answer: str) -> str:

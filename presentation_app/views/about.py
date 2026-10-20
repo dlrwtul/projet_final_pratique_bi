@@ -8,7 +8,7 @@ PIPELINE = [
     ("BRONZE", "DLT"),
     ("SILVER · GOLD", "dbt"),
     ("ORCHESTRATION", "Dagster"),
-    ("ENTREPÔT · IA", "Snowflake Cortex"),
+    ("ENTREPÔT · IA", "Snowflake · Cortex / Ollama"),
     ("INTERFACE", "Streamlit"),
 ]
 

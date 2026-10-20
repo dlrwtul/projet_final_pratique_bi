@@ -206,16 +206,40 @@ dg dev                 # Materialize all → schémas BRONZE, SILVER, GOLD rempl
 
 ## 7. Application WWI Insight (Streamlit)
 
+### 7.1 Modèle d'IA qui écrit le SQL
+
+L'application choisit automatiquement (`SQL_GENERATOR=auto`) :
+
+1. **Snowflake Cortex** (`CORTEX_MODEL`, défaut `mistral-large2`) s'il répond ;
+2. sinon **Ollama**, un modèle local et gratuit (`OLLAMA_MODEL`, défaut `qwen2.5-coder:7b`) ;
+3. sinon les 4 questions d'exemple seulement (et le SQL écrit à la main).
+
+> `SNOWFLAKE.CORTEX.COMPLETE` n'est **pas disponible sur les comptes d'essai** Snowflake
+> (« AI function COMPLETE is not available for trial accounts ») : Ollama prend alors le relais.
+> Le SQL généré reste exécuté sur la couche Gold de Snowflake.
+
+Installer Ollama (une fois, dans WSL/Ubuntu) :
+
 ```bash
-# Mode local : lit warehouse.duckdb (questions d'exemple + SQL manuel)
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen2.5-coder:7b        # ~4,7 Go ; machine modeste : qwen2.5-coder:3b + OLLAMA_MODEL=qwen2.5-coder:3b
+ollama serve                         # si le service ne tourne pas déjà (laisser ce terminal ouvert)
+```
+
+### 7.2 Lancer l'application
+
+```bash
+# Mode local : lit warehouse.duckdb
 export DUCKDB_PATH=$PWD/warehouse.duckdb
 streamlit run presentation_app/app.py           # http://localhost:8501
 
-# Mode Snowflake : génération SQL par Cortex AI pour n'importe quelle question
+# Mode Snowflake : la couche Gold est lue dans Snowflake
 export SF_ACCOUNT=<identifiant_compte> SF_USER=<utilisateur> SF_PASSWORD='<mot_de_passe>'
-export CORTEX_MODEL=mistral-large2              # optionnel (llama3.1-70b… selon la région)
 streamlit run presentation_app/app.py
 ```
+
+Le badge en haut de l'espace d'analyse indique la source et le modèle utilisés, par exemple
+`SNOWFLAKE · GOLD · ollama/qwen2.5-coder:7b`.
 
 Parcours : accueil → **Se connecter** → onglet **Inscription** → espace d'analyse →
 poser une question (ou cliquer un exemple) → tableau / graphique / export CSV.
@@ -225,12 +249,13 @@ poser une question (ou cliquer un exemple) → tableau / graphique / export CSV.
 - Seules les requêtes `SELECT` sont exécutées, limitées à 1 000 lignes.
 - Nom, encadrant et année de la page « À propos » : `PROJECT` dans `presentation_app/settings.py`.
 - Variables optionnelles : `SF_ROLE`, `SF_WAREHOUSE`, `SF_DATABASE`, `APP_BACKEND`
-  (`duckdb` ou `snowflake`, pour forcer le mode), `APP_USERS_DB`.
+  (`duckdb` ou `snowflake`, pour forcer le mode), `SQL_GENERATOR` (`auto`, `cortex`, `ollama`,
+  `none`), `OLLAMA_URL`, `OLLAMA_MODEL`, `APP_USERS_DB`.
 
 | Fichier | Rôle |
 |---|---|
 | `presentation_app/app.py` | point d'entrée et navigation |
-| `presentation_app/warehouse.py` | génération Cortex, contrôle et exécution du SQL |
+| `presentation_app/warehouse.py` | génération du SQL (Cortex ou Ollama), contrôle et exécution |
 | `presentation_app/users_db.py` | utilisateurs, dossiers et analyses (SQLite) |
 | `presentation_app/ui.py` | thème, composants, graphiques |
 | `presentation_app/views/` | pages : accueil, connexion, espace d'analyse, à propos |

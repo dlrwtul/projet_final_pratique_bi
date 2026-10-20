@@ -25,6 +25,12 @@ SNOWFLAKE = {
 }
 CORTEX_MODEL = os.getenv("CORTEX_MODEL", "mistral-large2")
 
+# Génération du SQL : "auto" (Cortex si disponible, sinon Ollama), "cortex", "ollama" ou "none".
+# Cortex COMPLETE n'est pas disponible sur les comptes d'essai Snowflake : Ollama sert de repli local.
+SQL_GENERATOR = os.getenv("SQL_GENERATOR", "auto")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
+
 MAX_ROWS = 1000
 
 # Informations affichées dans la page « À propos ».
