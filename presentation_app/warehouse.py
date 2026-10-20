@@ -1,5 +1,6 @@
 """Accès à la couche Gold : génération SQL (Snowflake Cortex), contrôle et exécution."""
 import re
+from datetime import date
 from decimal import Decimal
 
 import pandas as pd
@@ -56,7 +57,8 @@ class QueryError(Exception):
 def _snowflake_connection():
     import snowflake.connector
 
-    return snowflake.connector.connect(**SNOWFLAKE)
+    # keep_alive : la connexion est gardée en cache tant que l'application tourne.
+    return snowflake.connector.connect(**SNOWFLAKE, client_session_keep_alive=True)
 
 
 def _execute(sql: str, params: tuple = ()) -> pd.DataFrame:
@@ -79,11 +81,14 @@ def _execute(sql: str, params: tuple = ()) -> pd.DataFrame:
         finally:
             con.close()
         df.columns = [c.lower() for c in df.columns]
-    # Les NUMBER/DECIMAL arrivent en objets Decimal : on les convertit pour les graphiques.
+    # Les NUMBER/DECIMAL arrivent en objets Decimal et les DATE Snowflake en objets date :
+    # on les convertit pour les tableaux et les graphiques.
     for col in df.columns:
         first = df[col].dropna().head(1)
         if not first.empty and isinstance(first.iloc[0], Decimal):
             df[col] = df[col].astype(float)
+        elif not first.empty and isinstance(first.iloc[0], date):
+            df[col] = pd.to_datetime(df[col])
     return df
 
 
@@ -146,7 +151,18 @@ def generate_sql(question: str) -> str:
         )
     prompt = PROMPT.format(schema=gold_schema(), max_rows=MAX_ROWS, question=question)
     df = _execute("select snowflake.cortex.complete(%s, %s) as sql", (CORTEX_MODEL, prompt))
-    return df.iloc[0, 0]
+    return extract_sql(df.iloc[0, 0])
+
+
+def extract_sql(answer: str) -> str:
+    """Isole la requête quand le modèle l'entoure de texte ou d'un bloc ```sql."""
+    block = re.search(r"```(?:sql)?\s*(.*?)```", answer, re.IGNORECASE | re.DOTALL)
+    if block:
+        answer = block.group(1)
+    start = re.search(r"\b(with|select)\b", answer, re.IGNORECASE)
+    if start:
+        answer = answer[start.start():]
+    return answer.split(";")[0].strip()
 
 
 def clean_sql(sql: str) -> str:
