@@ -1,5 +1,6 @@
 """Thème visuel, composants HTML partagés et graphiques."""
 import base64
+import numbers
 from functools import lru_cache
 
 import altair as alt
@@ -194,7 +195,7 @@ def integer(value) -> str:
 
 
 def number(value) -> str:
-    if isinstance(value, (int, float)) and not pd.isna(value):
+    if isinstance(value, numbers.Number) and not pd.isna(value):  # inclut les entiers numpy
         return f"{value:,.0f}".replace(",", " ") if abs(value) >= 100 else f"{value:,.2f}".replace(".", ",")
     return str(value)
 
