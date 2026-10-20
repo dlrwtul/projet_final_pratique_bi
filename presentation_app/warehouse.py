@@ -1,6 +1,7 @@
 """Accès à la couche Gold : génération SQL (Snowflake Cortex ou Ollama), contrôle et exécution."""
 import json
 import re
+import threading
 import urllib.request
 from datetime import date
 from decimal import Decimal
@@ -140,8 +141,13 @@ def gold_schema() -> str:
         "select table_name, column_name, data_type from information_schema.columns "
         "where lower(table_schema) = 'gold' order by table_name, ordinal_position"
     )
+    # Schéma compact (types simplifiés) : prompt plus court, réponse plus rapide d'un modèle local.
+    def short(data_type: str) -> str:
+        t = data_type.lower()
+        return "date" if "date" in t or "time" in t else "texte" if "char" in t or "text" in t else "nombre"
+
     return "\n".join(
-        f"gold.{t.lower()}({', '.join(f'{c.lower()} {d}' for c, d in zip(g.column_name, g.data_type))})"
+        f"gold.{t.lower()}({', '.join(f'{c.lower()} {short(d)}' for c, d in zip(g.column_name, g.data_type))})"
         for t, g in df.groupby("table_name")
     )
 
@@ -179,13 +185,22 @@ def _cortex(prompt: str) -> str:
     return df.iloc[0, 0]
 
 
-def _ollama(prompt: str, timeout: int = 180) -> str:
-    body = json.dumps({"model": OLLAMA_MODEL, "prompt": prompt, "stream": False,
-                       "options": {"temperature": 0}}).encode()
+def _ollama(prompt: str, timeout: int = 300, num_predict: int = 320) -> str:
+    # keep_alive : le modèle reste chargé en mémoire ; stop ";" : on coupe dès la fin de la requête.
+    body = json.dumps({"model": OLLAMA_MODEL, "prompt": prompt, "stream": False, "keep_alive": "1h",
+                       "options": {"temperature": 0, "num_predict": num_predict, "num_ctx": 4096,
+                                   "stop": [";"]}}).encode()
     req = urllib.request.Request(f"{OLLAMA_URL}/api/generate", data=body,
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.load(resp)["response"]
+
+
+def _warm_up() -> None:
+    try:
+        _ollama("SELECT 1", num_predict=1)
+    except Exception:  # le préchargement est facultatif
+        pass
 
 
 def _cortex_available() -> bool:
@@ -217,27 +232,36 @@ def generator() -> str | None:
     if _cortex_available():
         return "cortex"
     if _ollama_available():
+        # Préchargement du modèle en arrière-plan : la première question n'attend pas son chargement.
+        threading.Thread(target=_warm_up, daemon=True).start()
         return "ollama"
     return None
 
 
-def generate_sql(question: str) -> str:
+@st.cache_data(show_spinner=False, max_entries=500)
+def _generate(engine: str, question: str) -> str:
+    """SQL généré pour une question (mis en cache : une question reposée répond instantanément)."""
+    prompt = PROMPT.format(dialect="Snowflake" if IS_SNOWFLAKE else "DuckDB",
+                           schema=gold_schema(), max_rows=MAX_ROWS, question=question)
+    answer = _cortex(prompt) if engine == "cortex" else _ollama(prompt)
+    return extract_sql(answer)
+
+
+def generate_sql(question: str) -> tuple[str, str]:
+    """Renvoie (sql, moteur) ; moteur = "exemple", "cortex" ou "ollama"."""
     sql = example_sql(question)
     if sql:
-        return sql
+        return sql, "exemple"
     engine = generator()
     if engine is None:
         raise QueryError(
             "Aucun modèle d'IA disponible (Cortex indisponible, Ollama non démarré). "
             "Choisissez une question d'exemple ou écrivez directement le SQL."
         )
-    prompt = PROMPT.format(dialect="Snowflake" if IS_SNOWFLAKE else "DuckDB",
-                           schema=gold_schema(), max_rows=MAX_ROWS, question=question)
     try:
-        answer = _cortex(prompt) if engine == "cortex" else _ollama(prompt)
+        return _generate(engine, question.strip()), engine
     except Exception as exc:
         raise QueryError(f"Le modèle {engine} n'a pas répondu : {exc}") from exc
-    return extract_sql(answer)
 
 
 def extract_sql(answer: str) -> str:

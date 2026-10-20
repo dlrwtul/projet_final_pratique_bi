@@ -27,9 +27,11 @@ html, body, .stApp, .stMarkdown p, h1, h2, h3, label, input, textarea, button p 
 code, pre, .stCode code {{ font-family: 'IBM Plex Mono', ui-monospace, monospace !important; }}
 
 /* Habillage Streamlit retiré */
-#MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
-[data-testid="stStatusWidget"] {{ display: none !important; }}
-[data-testid="stHeader"] {{ background: transparent; height: 0; }}
+/* (la barre d'outils reste : elle contient le bouton qui rouvre la barre latérale) */
+#MainMenu, footer, [data-testid="stMainMenu"], [data-testid="stAppDeployButton"], [data-testid="stToolbarActions"],
+[data-testid="stDecoration"], [data-testid="stStatusWidget"] {{ display: none !important; }}
+[data-testid="stHeader"] {{ background: transparent; }}
+
 .block-container {{ padding-top: 1.25rem; padding-bottom: 3rem; max-width: 1180px; }}
 hr {{ margin: .75rem 0 !important; border-color: {BORDER} !important; }}
 
@@ -140,7 +142,8 @@ button[data-testid="stBaseButton-tertiary"]:hover {{ color: {OCEAN}; }}
 
 
 def inject_css(background: str = "#FFFFFF", max_width: int = 1180) -> None:
-    st.html(CSS + f"<style>.stApp{{background:{background}}}.block-container{{max-width:{max_width}px}}</style>")
+    st.html(CSS + f"<style>.stApp{{background:{background}}}.block-container,"
+                  f'[data-testid="stBottomBlockContainer"]{{max-width:{max_width}px;margin:0 auto}}</style>')
 
 
 @lru_cache
@@ -214,6 +217,9 @@ def chart(df: pd.DataFrame, height: int = 340) -> alt.Chart | None:
         return None
     y = numeric[-1]
     x = next(c for c in df.columns if c != y)
+    # Comptes entiers : pas de graduations 0,1 / 0,2… sur l'axe des valeurs.
+    step = 1 if pd.api.types.is_integer_dtype(df[y]) or (df[y].dropna() % 1 == 0).all() else None
+    value_axis = alt.Axis(format="~s", tickMinStep=step) if step else alt.Axis(format="~s")
     tooltip_y = alt.Tooltip(f"{y}:Q", format=",.0f")
     dates = _as_dates(df[x])
     if dates is not None:
@@ -227,7 +233,7 @@ def chart(df: pd.DataFrame, height: int = 340) -> alt.Chart | None:
     if pd.api.types.is_numeric_dtype(df[x]):  # année, trimestre… : axe ordinal
         return (
             alt.Chart(df).mark_bar(color=OCEAN, cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-            .encode(x=alt.X(f"{x}:O", title=None, axis=alt.Axis(labelAngle=0)), y=alt.Y(f"{y}:Q", title=None, axis=alt.Axis(format="~s")),
+            .encode(x=alt.X(f"{x}:O", title=None, axis=alt.Axis(labelAngle=0)), y=alt.Y(f"{y}:Q", title=None, axis=value_axis),
                     tooltip=[alt.Tooltip(f"{x}:O"), tooltip_y])
             .properties(height=height).configure_view(strokeWidth=0)
         )
@@ -235,6 +241,6 @@ def chart(df: pd.DataFrame, height: int = 340) -> alt.Chart | None:
     return (
         alt.Chart(data).mark_bar(color=OCEAN, cornerRadiusEnd=4)
         .encode(y=alt.Y(f"{x}:N", sort="-x", title=None, axis=alt.Axis(labelLimit=260)),
-                x=alt.X(f"{y}:Q", title=None, axis=alt.Axis(format="~s")), tooltip=[alt.Tooltip(f"{x}:N"), tooltip_y])
+                x=alt.X(f"{y}:Q", title=None, axis=value_axis), tooltip=[alt.Tooltip(f"{x}:N"), tooltip_y])
         .properties(height=max(160, 30 * len(data))).configure_view(strokeWidth=0)
     )

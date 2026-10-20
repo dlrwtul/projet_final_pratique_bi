@@ -212,3 +212,6 @@ presentation_app/data/
 src/projet_final_pratique_bi/defs/transform/.user.yml
 # État local des composants Dagster (régénéré par dg)
 src/projet_final_pratique_bi/defs/.local_defs_state/
+
+# Répertoires temporaires de Dagster (dg dev)
+.tmp_dagster_home_*/

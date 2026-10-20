@@ -59,6 +59,12 @@ def _connect():
 def init() -> None:
     with _connect() as con:
         con.executescript(SCHEMA)
+        # Colonnes ajoutées après coup : migration des bases déjà créées.
+        columns = {row["name"] for row in con.execute("pragma table_info(analyses)")}
+        if "engine" not in columns:
+            con.execute("alter table analyses add column engine text")
+        if "duration_ms" not in columns:
+            con.execute("alter table analyses add column duration_ms integer")
 
 
 # --- Utilisateurs -------------------------------------------------------------
@@ -168,7 +174,8 @@ def delete_folder(user_id: int, folder_id: int) -> None:
 # --- Analyses -----------------------------------------------------------------
 
 def add_analysis(user_id: int, folder_id: int, question: str, sql: str,
-                 result_json: str, row_count: int) -> None:
+                 result_json: str, row_count: int, engine: str | None = None,
+                 duration_ms: int | None = None) -> None:
     with _connect() as con:
         owner = con.execute(
             "select 1 from folders where id = ? and user_id = ?", (folder_id, user_id)
@@ -176,9 +183,10 @@ def add_analysis(user_id: int, folder_id: int, question: str, sql: str,
         if owner is None:
             raise PermissionError("Dossier introuvable.")
         con.execute(
-            """insert into analyses (folder_id, question, sql, result_json, row_count, created_at)
-               values (?, ?, ?, ?, ?, ?)""",
-            (folder_id, question, sql, result_json, row_count, _now()),
+            """insert into analyses (folder_id, question, sql, result_json, row_count, created_at,
+                                     engine, duration_ms)
+               values (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (folder_id, question, sql, result_json, row_count, _now(), engine, duration_ms),
         )
 
 

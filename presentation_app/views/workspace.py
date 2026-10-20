@@ -1,4 +1,5 @@
 import html
+import time
 from datetime import datetime
 from io import StringIO
 
@@ -10,6 +11,8 @@ import ui
 import users_db
 import warehouse
 
+ENGINE_LABELS = {"exemple": "SQL de référence", "cortex": "généré par Cortex",
+                 "ollama": "généré par Ollama", "manuel": "SQL écrit à la main"}
 GROUP_ICONS = {"Ventes": ":material/trending_up:", "Produits": ":material/inventory_2:",
                "Rentabilité": ":material/savings:"}
 
@@ -153,8 +156,13 @@ def _analysis(user: dict, a: dict) -> None:
                 else:
                     st.code(a["sql"], language="sql")
         when = datetime.fromisoformat(a["created_at"]).strftime("%d/%m/%Y %H:%M")
+        details = [f"{when} UTC"]
+        if a.get("engine"):
+            details.append(ENGINE_LABELS.get(a["engine"], a["engine"]))
+        if a.get("duration_ms") is not None:
+            details.append(f"{a['duration_ms'] / 1000:.1f} s".replace(".", ","))
         meta, csv, delete = st.columns([5, 1.4, 1.4], vertical_alignment="center")
-        meta.html(f'<span class="wwi-muted" style="font-size:12px">{when} UTC</span>')
+        meta.html(f'<span class="wwi-muted" style="font-size:12px">{" · ".join(details)}</span>')
         csv.download_button("CSV", df.to_csv(index=False).encode(), f"analyse_{a['id']}.csv", "text/csv",
                             icon=":material/download:", key=f"csv_{a['id']}", type="tertiary", width="stretch")
         if delete.button("Supprimer", key=f"del_{a['id']}", icon=":material/delete:", type="tertiary", width="stretch"):
@@ -163,16 +171,23 @@ def _analysis(user: dict, a: dict) -> None:
 
 
 def _ask(user: dict, folder_id: int, question: str, sql: str | None = None) -> None:
+    # La question s'affiche tout de suite pendant que le SQL est généré puis exécuté.
+    st.html(f'<div class="wwi-question"><div>{html.escape(question)}</div></div>')
+    start = time.perf_counter()
+    engine = "manuel" if sql else None
     try:
-        with st.spinner("Génération et exécution de la requête…"):
-            sql = warehouse.clean_sql(sql or warehouse.generate_sql(question))
+        with st.spinner("Génération du SQL et exécution sur la couche Gold…"):
+            if not sql:
+                sql, engine = warehouse.generate_sql(question)
+            sql = warehouse.clean_sql(sql)
             df = warehouse.run_sql(sql)
     except warehouse.QueryError as exc:
         st.session_state.last_error = (question, str(exc), sql)
         st.rerun()
     st.session_state.pop("last_error", None)
     users_db.add_analysis(user["id"], folder_id, question, sql,
-                          df.to_json(orient="split", date_format="iso", index=False), len(df))
+                          df.to_json(orient="split", date_format="iso", index=False), len(df),
+                          engine, int((time.perf_counter() - start) * 1000))
     st.rerun()
 
 
