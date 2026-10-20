@@ -1,7 +1,8 @@
 """Stockage SQLite des utilisateurs, de leurs dossiers d'analyse et de leurs analyses."""
+import secrets
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import bcrypt
 
@@ -20,6 +21,11 @@ create table if not exists folders (
     user_id    integer not null references users(id) on delete cascade,
     name       text not null,
     created_at text not null
+);
+create table if not exists sessions (
+    token      text primary key,
+    user_id    integer not null references users(id) on delete cascade,
+    expires_at text not null
 );
 create table if not exists analyses (
     id          integer primary key autoincrement,
@@ -93,6 +99,36 @@ def authenticate(email: str, password: str) -> dict:
     if row is None or not bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
         raise AuthError("E-mail ou mot de passe incorrect.")
     return {"id": row["id"], "full_name": row["full_name"], "email": row["email"]}
+
+
+# --- Sessions (survivent au rechargement de la page) --------------------------
+
+SESSION_DAYS = 7
+
+
+def create_session(user_id: int) -> str:
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.now(timezone.utc) + timedelta(days=SESSION_DAYS)).isoformat(timespec="seconds")
+    with _connect() as con:
+        con.execute("delete from sessions where expires_at < ?", (_now(),))
+        con.execute("insert into sessions (token, user_id, expires_at) values (?, ?, ?)",
+                    (token, user_id, expires))
+    return token
+
+
+def session_user(token: str) -> dict | None:
+    with _connect() as con:
+        row = con.execute(
+            """select u.id, u.full_name, u.email from sessions s join users u on u.id = s.user_id
+               where s.token = ? and s.expires_at > ?""",
+            (token, _now()),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def delete_session(token: str) -> None:
+    with _connect() as con:
+        con.execute("delete from sessions where token = ?", (token,))
 
 
 # --- Dossiers -----------------------------------------------------------------

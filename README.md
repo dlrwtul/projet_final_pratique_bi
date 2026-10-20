@@ -254,11 +254,12 @@ poser une question (ou cliquer un exemple) → tableau / graphique / export CSV.
 
 | Fichier | Rôle |
 |---|---|
-| `presentation_app/app.py` | point d'entrée et navigation |
+| `presentation_app/app.py` | point d'entrée |
+| `presentation_app/session.py` | navigation et session persistante (jeton valable 7 jours, conservé dans l'URL) |
 | `presentation_app/warehouse.py` | génération du SQL (Cortex ou Ollama), contrôle et exécution |
 | `presentation_app/users_db.py` | utilisateurs, dossiers et analyses (SQLite) |
 | `presentation_app/ui.py` | thème, composants, graphiques |
-| `presentation_app/views/` | pages : accueil, connexion, espace d'analyse, à propos |
+| `presentation_app/views/` | pages : accueil, connexion, espace d'analyse, à propos (+ barre de navigation commune) |
 
 ---
 

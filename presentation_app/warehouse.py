@@ -13,35 +13,66 @@ from settings import (BACKEND, CORTEX_MODEL, DUCKDB_PATH, MAX_ROWS, OLLAMA_MODEL
 
 IS_SNOWFLAKE = BACKEND == "snowflake"
 
-# Questions de la consigne (et quelques autres) avec leur SQL, compatibles DuckDB et Snowflake.
-# Sans modèle d'IA disponible, ce sont les seules questions auxquelles l'application sait répondre.
-EXAMPLES = {
-    "Quels sont les dix meilleurs clients par chiffre d'affaires ?": """
+# Questions d'exemple, regroupées par thème, avec leur SQL (compatible DuckDB et Snowflake).
+# Les trois premières sont celles de la consigne. Sans modèle d'IA disponible, ce sont les
+# seules questions auxquelles l'application sait répondre.
+EXAMPLE_GROUPS = {
+    "Ventes": {
+        "Quels sont les dix meilleurs clients par chiffre d'affaires ?": """
 select c.customer_name, sum(s.sales_amount_excl_tax) as chiffre_affaires
 from gold.fct_sales s
 join gold.dim_customers c on s.customer_id = c.customer_id
 group by c.customer_name
 order by chiffre_affaires desc
 limit 10""",
-    "Quel est le montant total des ventes par mois ?": """
+        "Quel est le montant total des ventes par mois ?": """
 select date_trunc('month', order_date) as mois, sum(sales_amount_excl_tax) as chiffre_affaires
 from gold.fct_sales
 group by 1
 order by 1""",
-    "Quels produits génèrent le plus de bénéfices ?": """
+        "Quel est le chiffre d'affaires par année ?": """
+select extract(year from order_date) as annee, sum(sales_amount_excl_tax) as chiffre_affaires
+from gold.fct_sales
+group by 1
+order by 1""",
+        "Quel est le chiffre d'affaires par vendeur ?": """
+select sp.salesperson_name, sum(s.sales_amount_excl_tax) as chiffre_affaires
+from gold.fct_sales s
+join gold.dim_salespeople sp on s.salesperson_id = sp.salesperson_id
+group by sp.salesperson_name
+order by chiffre_affaires desc""",
+    },
+    "Produits": {
+        "Quels produits génèrent le plus de bénéfices ?": """
 select p.product_name, sum(f.line_profit) as benefice
 from gold.fct_invoice_lines f
 join gold.dim_products p on f.product_id = p.product_id
 group by p.product_name
 order by benefice desc
 limit 10""",
-    "Quel est le chiffre d'affaires par vendeur ?": """
-select sp.salesperson_name, sum(s.sales_amount_excl_tax) as chiffre_affaires
+        "Quels sont les produits les plus vendus en quantité ?": """
+select p.product_name, sum(s.quantity) as quantite_vendue
 from gold.fct_sales s
-join gold.dim_salespeople sp on s.salesperson_id = sp.salesperson_id
-group by sp.salesperson_name
-order by chiffre_affaires desc""",
+join gold.dim_products p on s.product_id = p.product_id
+group by p.product_name
+order by quantite_vendue desc
+limit 10""",
+    },
+    "Rentabilité": {
+        "Quel est le bénéfice par année ?": """
+select extract(year from invoice_date) as annee, sum(line_profit) as benefice
+from gold.fct_invoice_lines
+group by 1
+order by 1""",
+        "Quel est le panier moyen par année ?": """
+select extract(year from order_date) as annee,
+       sum(sales_amount_excl_tax) / count(distinct order_id) as panier_moyen
+from gold.fct_sales
+group by 1
+order by 1""",
+    },
 }
+EXAMPLES = {q: sql for group in EXAMPLE_GROUPS.values() for q, sql in group.items()}
 
 FORBIDDEN = re.compile(
     r"\b(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|"

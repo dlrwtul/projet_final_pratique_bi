@@ -4,6 +4,7 @@ Lancement depuis la racine du projet :  streamlit run presentation_app/app.py
 """
 import streamlit as st
 
+import session
 import ui
 import users_db
 from views import about, landing, login, workspace
@@ -14,11 +15,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-ui.inject_css()
 users_db.init()
+session.restore()
 
-page = st.session_state.get("page", "landing")
-if page == "workspace" and "user" not in st.session_state:
-    page = "login"
-
+page = session.current_page()
+ui.inject_css(background=ui.SURFACE if page == "login" else "#FFFFFF",
+              max_width=980 if page == "workspace" else 1180)
 {"landing": landing, "login": login, "workspace": workspace, "about": about}[page].render()

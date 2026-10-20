@@ -1,72 +1,108 @@
+import html
+from datetime import datetime
 from io import StringIO
 
 import pandas as pd
 import streamlit as st
 
+import session
 import ui
 import users_db
 import warehouse
+
+GROUP_ICONS = {"Ventes": ":material/trending_up:", "Produits": ":material/inventory_2:",
+               "Rentabilité": ":material/savings:"}
 
 
 def _initials(name: str) -> str:
     return "".join(p[0] for p in name.split()[:2]).upper() or "?"
 
 
+# --- Dossiers (boîtes de dialogue) --------------------------------------------
+
+@st.dialog("Nouveau dossier")
+def _new_folder(user: dict) -> None:
+    with st.form("new_folder_form", border=False):
+        name = st.text_input("Nom du dossier", placeholder="Ex. : Ventes 2015", max_chars=60)
+        if st.form_submit_button("Créer le dossier", type="primary", width="stretch") and name.strip():
+            st.session_state.folder_id = users_db.create_folder(user["id"], name)
+            st.rerun()
+
+
+@st.dialog("Renommer le dossier")
+def _rename_folder(user: dict, folder: dict) -> None:
+    with st.form("rename_folder_form", border=False):
+        name = st.text_input("Nouveau nom", value=folder["name"], max_chars=60)
+        if st.form_submit_button("Enregistrer", type="primary", width="stretch") and name.strip():
+            users_db.rename_folder(user["id"], folder["id"], name)
+            st.rerun()
+
+
+@st.dialog("Supprimer le dossier")
+def _delete_folder(user: dict, folder: dict) -> None:
+    st.write(f"Le dossier **{folder['name']}** et ses {folder['n']} analyse(s) seront supprimés.")
+    cancel, confirm = st.columns(2)
+    if cancel.button("Annuler", width="stretch"):
+        st.rerun()
+    if confirm.button("Supprimer", type="primary", width="stretch", icon=":material/delete:"):
+        users_db.delete_folder(user["id"], folder["id"])
+        st.session_state.pop("folder_id", None)
+        st.rerun()
+
+
+# --- Barre latérale et en-tête ------------------------------------------------
+
 def _sidebar(user: dict, folders: list[dict], active: dict) -> None:
     with st.sidebar:
-        st.html(ui.brand(size=26, subtitle=False))
+        st.html(f'<div style="padding:4px 2px 10px">{ui.brand(size=28, subtitle=False)}</div>')
+        if st.button("Nouveau dossier", key="new_folder_btn", icon=":material/create_new_folder:", width="stretch"):
+            _new_folder(user)
 
-        with st.popover("Nouveau dossier", icon=":material/create_new_folder:", width="stretch"):
-            with st.form("new_folder", border=False, clear_on_submit=True):
-                name = st.text_input("Nom du dossier", placeholder="Ex. : Ventes 2015")
-                if st.form_submit_button("Créer", type="primary") and name.strip():
-                    st.session_state.folder_id = users_db.create_folder(user["id"], name)
-                    st.rerun()
-
-        st.caption("DOSSIERS")
+        st.html(f'<div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{ui.MUTED};'
+                'margin:14px 0 2px">MES DOSSIERS</div>')
         for f in folders:
             is_active = f["id"] == active["id"]
-            label = f"{f['name']}  ·  {f['n']}"
-            if st.button(label, key=f"folder_{f['id']}", icon=":material/folder:",
+            if st.button(f"{f['name']}  ·  {f['n']}", key=f"folder_{f['id']}",
+                         icon=":material/folder_open:" if is_active else ":material/folder:",
                          type="primary" if is_active else "tertiary", width="stretch"):
                 st.session_state.folder_id = f["id"]
                 st.rerun()
 
         st.divider()
+        if st.button("Accueil", icon=":material/home:", type="tertiary", width="stretch"):
+            session.go("landing")
         if st.button("À propos du projet", icon=":material/info:", type="tertiary", width="stretch"):
-            ui.go("about")
+            session.go("about")
+        st.divider()
         st.html(f"""
-            <div style="display:flex;align-items:center;gap:10px;padding:4px 0">
-              <span style="width:34px;height:34px;border-radius:17px;background:{ui.NAVY};color:#fff;font-size:13px;
-                           font-weight:600;display:inline-flex;align-items:center;justify-content:center">
-                {_initials(user['full_name'])}</span>
+            <div style="display:flex;align-items:center;gap:10px;padding:2px 0">
+              <span style="width:36px;height:36px;border-radius:18px;background:{ui.NAVY};color:#fff;font-size:13px;
+                           font-weight:600;display:inline-flex;align-items:center;justify-content:center;flex:none">
+                {html.escape(_initials(user['full_name']))}</span>
               <span style="display:flex;flex-direction:column;min-width:0">
-                <span style="font-size:14px;font-weight:500;color:{ui.NAVY}">{user['full_name']}</span>
-                <span style="font-size:12px;color:{ui.MUTED}">{user['email']}</span>
+                <span style="font-size:14px;font-weight:600;color:{ui.NAVY}">{html.escape(user['full_name'])}</span>
+                <span style="font-size:12px;color:{ui.MUTED};overflow:hidden;text-overflow:ellipsis">
+                  {html.escape(user['email'])}</span>
               </span>
             </div>""")
         if st.button("Se déconnecter", icon=":material/logout:", type="tertiary", width="stretch"):
-            st.session_state.clear()
-            ui.go("landing")
+            session.sign_out()
 
 
-def _folder_header(user: dict, active: dict, folders: list[dict]) -> None:
-    title, badge, manage = st.columns([4, 3, 1], vertical_alignment="center")
-    title.html(f'<span class="wwi-muted" style="font-size:14px">Dossiers /</span> '
-               f'<span style="font-size:20px;font-weight:600;color:{ui.NAVY}">{active["name"]}</span>')
+def _header(user: dict, active: dict, folders: list[dict]) -> None:
+    title, badge, options = st.columns([4.6, 3.2, 1.7], vertical_alignment="center")
+    title.html(f'<div style="font-size:24px;font-weight:600;color:{ui.NAVY}">{html.escape(active["name"])}</div>'
+               f'<div class="wwi-muted" style="font-size:13px">{active["n"]} analyse(s)</div>')
     badge.html(f'<div class="wwi-badge" style="text-align:right"><i></i>{warehouse.backend_label()}</div>')
-    with manage.popover("Gérer", icon=":material/more_horiz:", width="stretch"):
-        with st.form("rename_folder", border=False):
-            new_name = st.text_input("Renommer", value=active["name"])
-            if st.form_submit_button("Enregistrer") and new_name.strip():
-                users_db.rename_folder(user["id"], active["id"], new_name)
-                st.rerun()
-        if len(folders) > 1 and st.button("Supprimer le dossier", icon=":material/delete:"):
-            users_db.delete_folder(user["id"], active["id"])
-            st.session_state.pop("folder_id", None)
-            st.rerun()
+    with options.popover("Gérer", icon=":material/tune:", width="stretch"):
+        if st.button("Renommer", icon=":material/edit:", type="tertiary", width="stretch"):
+            _rename_folder(user, active)
+        if len(folders) > 1 and st.button("Supprimer", icon=":material/delete:", type="tertiary", width="stretch"):
+            _delete_folder(user, active)
     st.divider()
 
+
+# --- Analyses -----------------------------------------------------------------
 
 def _load(result_json: str | None) -> pd.DataFrame:
     if not result_json:
@@ -80,47 +116,48 @@ def _load(result_json: str | None) -> pd.DataFrame:
     return df
 
 
-def _summary(df: pd.DataFrame) -> str:
+def _insight(df: pd.DataFrame) -> str:
     if df.empty:
         return "Aucune ligne ne correspond à cette question."
     numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-    text = f"{len(df)} ligne{'s' if len(df) > 1 else ''} renvoyée{'s' if len(df) > 1 else ''}."
-    labels = [c for c in df.columns if c not in numeric]
-    if numeric and labels and len(df) > 1:
+    if len(df) == 1 and numeric:
+        return f"Résultat : <strong>{ui.number(df.iloc[0][numeric[-1]])}</strong>"
+    # Libellé = première colonne non mesurée (une année numérique compte comme libellé).
+    labels = [c for c in df.columns if c not in numeric] or numeric[:-1]
+    text = f"<strong>{len(df)}</strong> lignes"
+    if numeric and labels:
         first = df.iloc[0]
         label = first[labels[0]]
-        if isinstance(label, pd.Timestamp):
-            label = label.strftime("%d/%m/%Y")
-        text += f" Première ligne : **{label}** ({first[numeric[0]]:,.0f}).".replace(",", " ")
+        label = label.strftime("%m/%Y") if isinstance(label, pd.Timestamp) else html.escape(str(label))
+        text += f" · première : <strong>{label}</strong> ({ui.number(first[numeric[-1]])})"
     return text
 
 
 def _analysis(user: dict, a: dict) -> None:
-    with st.chat_message("user", avatar=":material/person:"):
-        st.markdown(f"**{a['question']}**")
-    with st.chat_message("assistant", avatar=":material/public:"):
-        df = _load(a["result_json"])
-        st.markdown(_summary(df))
-        with st.expander("Requête SQL générée", icon=":material/code:"):
-            st.code(a["sql"], language="sql")
-        if not df.empty:
-            table_tab, chart_tab = st.tabs(["Tableau", "Graphique"])
-            with table_tab:
-                numbers = {c: st.column_config.NumberColumn(format="localized")
-                           for c in df.columns if pd.api.types.is_float_dtype(df[c])}
-                dates = {c: st.column_config.DateColumn(format="DD/MM/YYYY")
-                         for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])}
-                st.dataframe(df, hide_index=True, width="stretch", column_config=numbers | dates)
-            with chart_tab:
-                figure = ui.chart(df)
-                if figure is None:
-                    st.caption("Pas de graphique pour ce résultat (aucune colonne numérique).")
-                else:
+    st.html(f'<div class="wwi-question"><div>{html.escape(a["question"])}</div></div>')
+    df = _load(a["result_json"])
+    figure = ui.chart(df) if not df.empty else None
+    with st.container(key=f"answer_{a['id']}"):
+        st.html(f'<div class="wwi-insight">{_insight(df)}</div>')
+        names = (["Graphique"] if figure is not None else []) + (["Tableau"] if not df.empty else []) + ["SQL"]
+        for name, tab in zip(names, st.tabs(names)):
+            with tab:
+                if name == "Graphique":
                     st.altair_chart(figure, width="stretch")
-        c1, c2, _ = st.columns([1.2, 1, 4])
-        c1.download_button("Exporter CSV", df.to_csv(index=False).encode(), f"analyse_{a['id']}.csv",
-                           "text/csv", icon=":material/download:", key=f"csv_{a['id']}")
-        if c2.button("Supprimer", key=f"del_{a['id']}", icon=":material/delete:", type="tertiary"):
+                elif name == "Tableau":
+                    numbers = {c: st.column_config.NumberColumn(format="localized")
+                               for c in df.columns if pd.api.types.is_float_dtype(df[c])}
+                    dates = {c: st.column_config.DateColumn(format="DD/MM/YYYY")
+                             for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])}
+                    st.dataframe(df, hide_index=True, width="stretch", column_config=numbers | dates)
+                else:
+                    st.code(a["sql"], language="sql")
+        when = datetime.fromisoformat(a["created_at"]).strftime("%d/%m/%Y %H:%M")
+        meta, csv, delete = st.columns([5, 1.4, 1.4], vertical_alignment="center")
+        meta.html(f'<span class="wwi-muted" style="font-size:12px">{when} UTC</span>')
+        csv.download_button("CSV", df.to_csv(index=False).encode(), f"analyse_{a['id']}.csv", "text/csv",
+                            icon=":material/download:", key=f"csv_{a['id']}", type="tertiary", width="stretch")
+        if delete.button("Supprimer", key=f"del_{a['id']}", icon=":material/delete:", type="tertiary", width="stretch"):
             users_db.delete_analysis(user["id"], a["id"])
             st.rerun()
 
@@ -139,17 +176,40 @@ def _ask(user: dict, folder_id: int, question: str, sql: str | None = None) -> N
     st.rerun()
 
 
+def _queue_suggestion() -> None:
+    if question := st.session_state.get("suggestions"):
+        st.session_state.pending_question = question
+        st.session_state.suggestions = None
+
+
 def _empty_state(user: dict, folder_id: int) -> None:
-    st.html(f'<div style="padding:32px 0 12px"><h2 style="margin:0;font-size:24px;font-weight:600;color:{ui.NAVY}">'
-            "Que voulez-vous savoir ?</h2><p class='wwi-muted' style='margin:6px 0 0'>"
-            "Posez une question en bas de page, ou commencez par un exemple.</p></div>")
-    for i, question in enumerate(warehouse.EXAMPLES):
-        if st.button(question, key=f"example_{i}", icon=":material/arrow_forward:"):
-            _ask(user, folder_id, question)
+    st.html(f'<div style="text-align:center;padding:28px 0 18px">'
+            f'<div style="font-size:30px;font-weight:600;color:{ui.NAVY}">Que voulez-vous savoir ?</div>'
+            f'<div class="wwi-muted" style="margin-top:6px">Choisissez une question ou écrivez la vôtre en bas.</div>'
+            "</div>")
+    with st.container(key="example_grid"):
+        for group, questions in warehouse.EXAMPLE_GROUPS.items():
+            st.html(f'<div style="font-size:12px;font-weight:600;letter-spacing:.06em;color:{ui.MUTED};'
+                    f'margin:10px 0 0">{group.upper()}</div>')
+            cols = st.columns(2)
+            for i, question in enumerate(questions):
+                if cols[i % 2].button(question, key=f"ex_{group}_{i}", icon=GROUP_ICONS[group], width="stretch"):
+                    _ask(user, folder_id, question)
+
+
+def _error_block(user: dict, folder_id: int) -> None:
+    question, message, failed_sql = st.session_state.last_error
+    st.html(f'<div class="wwi-question"><div>{html.escape(question)}</div></div>')
+    with st.container(key="answer_error"):
+        st.warning(message, icon=":material/warning:")
+        with st.form("manual_sql", border=False):
+            sql = st.text_area("Écrire ou corriger le SQL", value=failed_sql or "select ", height=140)
+            if st.form_submit_button("Exécuter", type="primary", icon=":material/play_arrow:"):
+                _ask(user, folder_id, question, sql)
 
 
 def render() -> None:
-    user = st.session_state.user
+    user = session.user()
     folders = users_db.list_folders(user["id"])
     if not folders:
         users_db.create_folder(user["id"], "Mes analyses")
@@ -158,28 +218,25 @@ def render() -> None:
     st.session_state.folder_id = active["id"]
 
     _sidebar(user, folders, active)
-    _folder_header(user, active, folders)
+    _header(user, active, folders)
+
+    if pending := st.session_state.pop("pending_question", None):
+        _ask(user, active["id"], pending)
 
     analyses = users_db.list_analyses(user["id"], active["id"])
-    if not analyses:
+    if not analyses and "last_error" not in st.session_state:
         _empty_state(user, active["id"])
     for a in analyses:
         _analysis(user, a)
+    if "last_error" in st.session_state:
+        _error_block(user, active["id"])
 
-    error = st.session_state.get("last_error")
-    if error:
-        question, message, failed_sql = error
-        with st.chat_message("assistant", avatar=":material/public:"):
-            st.markdown(f"**{question}**")
-            st.warning(message)
-            with st.form("manual_sql", border=False):
-                sql = st.text_area("Écrire ou corriger le SQL", value=failed_sql or "select ", height=140)
-                if st.form_submit_button("Exécuter", type="primary"):
-                    _ask(user, active["id"], question, sql)
-
-    if warehouse.generator() is None:
-        st.caption("Aucun modèle d'IA disponible : seules les questions d'exemple sont traduites "
-                   "automatiquement. Activez Cortex (Snowflake) ou lancez Ollama (`ollama serve`).")
-    question = st.chat_input("Posez une question sur les données Wide World Importers…")
-    if question:
+    if analyses:
+        asked = {a["question"] for a in analyses}
+        ideas = [q for q in warehouse.EXAMPLES if q not in asked][:4]
+        if ideas:
+            st.html('<div style="height:8px"></div>')
+            st.pills("Suggestions", ideas, key="suggestions", on_change=_queue_suggestion,
+                     label_visibility="collapsed")
+    if question := st.chat_input("Posez une question sur les données Wide World Importers…"):
         _ask(user, active["id"], question)

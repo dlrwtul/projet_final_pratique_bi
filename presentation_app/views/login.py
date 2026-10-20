@@ -1,58 +1,44 @@
 import streamlit as st
 
+import session
 import ui
 import users_db
 
-
-def _sign_in(user: dict) -> None:
-    st.session_state.user = user
-    st.session_state.pop("folder_id", None)
-    ui.go("workspace")
+MODES = {"login": "Connexion", "signup": "Inscription"}
 
 
 def render() -> None:
-    panel, form = st.columns([1, 1], gap="large")
+    _, center, _ = st.columns([1, 1.15, 1])
+    with center:
+        st.html(f'<div style="display:flex;justify-content:center;padding:48px 0 20px">{ui.brand(size=34)}</div>')
+        with st.container(key="auth_card"):
+            mode = st.segmented_control("Accès", list(MODES), format_func=MODES.get, width="stretch",
+                                        default=st.session_state.pop("auth_tab", "login"),
+                                        key="auth_mode", label_visibility="collapsed") or "login"
+            signup = mode == "signup"
+            st.html(f'<h1 style="margin:14px 0 2px;font-size:26px;font-weight:600;color:{ui.NAVY}">'
+                    f'{"Créer un compte" if signup else "Bon retour"}</h1>'
+                    f'<p class="wwi-muted" style="margin:0 0 6px">'
+                    f'{"Vos dossiers d’analyse vous attendent." if signup else "Connectez-vous à votre espace."}</p>')
+            if pending := st.session_state.get("pending_question"):
+                st.info(f"Votre question sera lancée juste après : « {pending} »", icon=":material/schedule:")
 
-    with panel:
-        st.html(f"""
-            <div style="background:{ui.NAVY};border-radius:10px;padding:36px 40px;min-height:540px;
-                        box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;gap:40px">
-              {ui.brand(dark=True)}
-              <div style="display:flex;flex-direction:column;gap:16px">
-                <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#5FB4D9">
-                  &gt; montant total des ventes par mois ?</span>
-                <p style="margin:0;font-size:28px;line-height:1.3;font-weight:500;color:#FFFFFF">
-                  Vos questions, vos dossiers et vos résultats, conservés d'une session à l'autre.</p>
-                <p style="margin:0;font-size:15px;line-height:1.6;color:#A9B6C6">
-                  Mots de passe hachés (bcrypt). Comptes et dossiers stockés à part de l'entrepôt.</p>
-              </div>
-              {ui.ucad_block(size=40, dark=True)}
-            </div>""")
-
-    with form:
-        st.html(f'<div style="padding-top:48px"><h1 style="margin:0;font-size:28px;font-weight:600;color:{ui.NAVY}">'
-                f'Bienvenue</h1><p class="wwi-muted" style="margin:6px 0 0">'
-                "Connectez-vous pour retrouver vos dossiers d'analyse.</p></div>")
-        login_tab, signup_tab = st.tabs(["Connexion", "Inscription"])
-
-        with login_tab, st.form("login", border=False):
-            email = st.text_input("Adresse e-mail", placeholder="vous@exemple.sn", key="login_email")
-            password = st.text_input("Mot de passe", type="password", key="login_password")
-            if st.form_submit_button("Se connecter", type="primary", width="stretch"):
+            with st.form(f"form_{mode}", border=False):
+                name = st.text_input("Nom complet", placeholder="Prénom Nom") if signup else ""
+                email = st.text_input("Adresse e-mail", placeholder="vous@exemple.sn")
+                password = st.text_input("Mot de passe", type="password",
+                                         placeholder="8 caractères minimum" if signup else "")
+                submitted = st.form_submit_button("Créer mon compte" if signup else "Se connecter",
+                                                  type="primary", width="stretch")
+            if submitted:
                 try:
-                    _sign_in(users_db.authenticate(email, password))
+                    account = (users_db.create_user(name, email, password) if signup
+                               else users_db.authenticate(email, password))
                 except users_db.AuthError as exc:
                     st.error(str(exc))
+                else:
+                    session.sign_in(account)
 
-        with signup_tab, st.form("signup", border=False):
-            full_name = st.text_input("Nom complet", placeholder="Prénom Nom", key="signup_name")
-            email = st.text_input("Adresse e-mail", placeholder="vous@exemple.sn", key="signup_email")
-            password = st.text_input("Mot de passe", type="password", placeholder="8 caractères minimum", key="signup_password")
-            if st.form_submit_button("Créer mon compte", type="primary", width="stretch"):
-                try:
-                    _sign_in(users_db.create_user(full_name, email, password))
-                except users_db.AuthError as exc:
-                    st.error(str(exc))
-
-        if st.button("← Retour à l'accueil", type="tertiary"):
-            ui.go("landing")
+        _, back, _ = st.columns([1, 2, 1])
+        if back.button("Retour à l'accueil", type="tertiary", icon=":material/arrow_back:", width="stretch"):
+            session.go("landing")
