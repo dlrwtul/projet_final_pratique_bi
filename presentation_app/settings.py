@@ -19,7 +19,7 @@ SNOWFLAKE = {
     "user": os.getenv("SF_USER"),
     "password": os.getenv("SF_PASSWORD"),
     "role": os.getenv("SF_ROLE", "PFPB_ROLE"),
-    "warehouse": os.getenv("SF_WAREHOUSE", "WH_TRANSFORM"),
+    "warehouse": os.getenv("SF_WAREHOUSE", "COMPUTE_WH"),
     "database": os.getenv("SF_DATABASE", "PROJET_FINAL_PRATIQUE_BI"),
     "schema": "GOLD",
 }
