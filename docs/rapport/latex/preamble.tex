@@ -1,0 +1,98 @@
+% Préambule du rapport (pandoc -H preamble.tex) : mise en page moderne et sobre.
+% Couleurs reprises de l'application WWI Insight.
+\usepackage{xcolor}
+\definecolor{accent}{HTML}{0B6E99}
+\definecolor{ink}{HTML}{0F1B2D}
+\definecolor{muted}{HTML}{5A6678}
+\definecolor{codebg}{HTML}{F3F5F8}
+\definecolor{hair}{HTML}{DDE2E9}
+
+% Polices
+% (fichiers fournis dans fonts/, licence SIL OFL : le rapport compile sans installation de police)
+\setmainfont{IBMPlexSans}[Path=fonts/, Extension=.ttf, UprightFont=*-Regular, ItalicFont=*-Italic,
+  BoldFont=*-SemiBold, BoldItalicFont=*-SemiBoldItalic]
+\setmonofont{IBMPlexMono}[Path=fonts/, Extension=.ttf, Scale=0.88, UprightFont=*-Regular, ItalicFont=*-Italic, BoldFont=*-SemiBold]
+\newfontfamily\headfont{IBMPlexSans}[Path=fonts/, Extension=.ttf, UprightFont=*-Regular, ItalicFont=*-Italic, BoldFont=*-SemiBold]
+
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{titletoc}
+\usepackage{caption}
+\usepackage{booktabs}
+\usepackage{colortbl}
+\usepackage{float}
+\usepackage{enumitem}
+
+\color{ink}
+\linespread{1.18}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.7em}
+\setlist{itemsep=0.25em, topsep=0.3em}
+\floatplacement{figure}{H}
+\arrayrulecolor{hair}
+
+% En-têtes : discrets, sans filet
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\footnotesize\color{muted}\nouppercase{\leftmark}}
+\fancyhead[R]{\footnotesize\color{muted}\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[R]{\footnotesize\color{muted}\thepage}}
+\renewcommand{\chaptermark}[1]{\markboth{\thechapter.\ #1}{}}
+
+% Titres
+\titleformat{\chapter}[display]
+  {\headfont\color{ink}}
+  {\normalsize\color{accent}\bfseries CHAPITRE \thechapter}
+  {6pt}
+  {\fontsize{26}{31}\selectfont\bfseries}
+  [\vspace{4pt}{\color{hair}\rule{\linewidth}{0.8pt}}]
+\titleformat{name=\chapter, numberless}[display]
+  {\headfont\color{ink}}{}{0pt}{\fontsize{26}{31}\selectfont\bfseries}
+  [\vspace{4pt}{\color{hair}\rule{\linewidth}{0.8pt}}]
+\titlespacing*{\chapter}{0pt}{0pt}{28pt}
+\titleformat{\section}{\headfont\Large\bfseries\color{ink}}{\color{accent}\thesection}{0.8em}{}
+\titleformat{\subsection}{\headfont\large\bfseries\color{ink}}{\color{accent}\thesubsection}{0.8em}{}
+\titlespacing*{\section}{0pt}{1.6em}{0.5em}
+\titlespacing*{\subsection}{0pt}{1.2em}{0.3em}
+
+% Table des matières
+\titlecontents{chapter}[0pt]{\addvspace{0.8em}\bfseries}
+  {\color{accent}\thecontentslabel\quad}{}{\hfill\contentspage}
+\titlecontents{section}[1.6em]{\addvspace{0.15em}}
+  {\color{muted}\thecontentslabel\quad}{}{\titlerule*[0.6pc]{\color{hair}.}\contentspage}
+
+% Légendes : petites, grises, numéro en couleur
+\captionsetup{font={small,color=muted}, labelfont={bf,color=accent}, labelsep=quad,
+  justification=raggedright, singlelinecheck=false, skip=6pt}
+
+% Code : fond gris clair, sans cadre
+\lstset{
+  basicstyle=\ttfamily\footnotesize\color{ink},
+  backgroundcolor=\color{codebg},
+  frame=single, rulecolor=\color{codebg}, framesep=7pt, framerule=0pt,
+  xleftmargin=7pt, xrightmargin=7pt,
+  numbers=left, numberstyle=\tiny\color{muted}, numbersep=12pt,
+  breaklines=true, breakatwhitespace=true, breakindent=1.5em,
+  columns=fullflexible, keepspaces=true, showstringspaces=false, tabsize=4,
+  keywordstyle=\color{accent}, commentstyle=\itshape\color{muted}, stringstyle=\color{ink},
+  captionpos=t, aboveskip=1.1em, belowskip=0.8em,
+  literate={é}{{\'e}}1 {è}{{\`e}}1 {ê}{{\^e}}1 {à}{{\`a}}1 {â}{{\^a}}1 {ç}{{\c c}}1
+           {ô}{{\^o}}1 {î}{{\^i}}1 {ù}{{\`u}}1 {û}{{\^u}}1 {É}{{\'E}}1 {È}{{\`E}}1
+           {’}{{'}}1 {«}{{\guillemotleft}}1 {»}{{\guillemotright}}1 {…}{{...}}1 {·}{{$\cdot$}}1
+}
+\lstdefinelanguage{yaml}{keywords={true,false,null}, sensitive=false,
+  comment=[l]{\#}, morestring=[b]', morestring=[b]"}
+\renewcommand{\lstlistingname}{Code}
+\renewcommand{\lstlistlistingname}{Liste des codes}
+
+% Noms en français
+\AtBeginDocument{%
+  \renewcommand{\tablename}{Tableau}%
+  \renewcommand{\listtablename}{Liste des tableaux}%
+  \hypersetup{colorlinks=true, linkcolor=ink, urlcolor=accent, citecolor=accent}%
+}
+
+% Année universitaire affichée sur la page de garde
+\newcommand{\ANNEE}{2025–2026}
