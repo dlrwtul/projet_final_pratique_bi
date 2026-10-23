@@ -1,18 +1,30 @@
 # Mise en œuvre
 
-Le projet a été créé avec `create-dagster` (figures [@fig:cd1] et [@fig:cd2]), puis les dépendances ont été ajoutées avec `uv add` (DLT, dagster-dlt, dagster-dbt, dbt-snowflake, Streamlit…). Le composant d'ingestion a été généré avec `dg scaffold defs dagster_dlt.DltLoadCollectionComponent mssql_ingestion` (figure [@fig:scaffold]), et le projet dbt est placé dans `defs/transform`. La figure [@fig:arbo] montre l'arborescence obtenue.
+Les étapes ci-dessous suivent l'ordre dans lequel nous avons travaillé, et donc l'ordre des captures. Toutes les exécutions présentées ont été faites avec Snowflake comme destination.
 
-![Lancement de `create-dagster`](../../captures/Capture1.png){#fig:cd1 width=75%}
+## Initialisation du projet
 
-![Projet Dagster créé](../../captures/Capture2.png){#fig:cd2 width=70%}
+Le projet a été créé avec `create-dagster` (figures [@fig:cd1] et [@fig:cd2]). Nous avons ensuite ajouté les dépendances avec `uv add` et généré le composant d'ingestion avec `dg scaffold defs dagster_dlt.DltLoadCollectionComponent mssql_ingestion`, en indiquant SQL Server comme source et Snowflake comme destination (figure [@fig:scaffold]). Le projet dbt est placé dans `defs/transform`. La figure [@fig:arbo] montre l'arborescence obtenue.
 
-![Ajout des dépendances et génération du composant DLT](../../captures/Capture3.png){#fig:scaffold width=75%}
+![Lancement de `create-dagster`](../../captures/Capture1.png){#fig:cd1 width=95%}
+
+![Projet Dagster créé](../../captures/Capture2.png){#fig:cd2 width=90%}
+
+![Ajout des dépendances et génération du composant DLT vers Snowflake](../../captures/Capture3.png){#fig:scaffold width=95%}
 
 ![Arborescence du projet](../../captures/Capture4.png){#fig:arbo width=22%}
 
+## Préparation de Snowflake
+
+Avant le premier chargement, nous avons préparé le compte Snowflake : un rôle `PFPB_ROLE`, la base `PROJET_FINAL_PRATIQUE_BI`, le warehouse `COMPUTE_WH` (taille XSMALL, suspendu après 60 s d'inactivité) et les trois schémas `BRONZE`, `SILVER` et `GOLD`.
+
+C'est là que nous avons eu le plus de problèmes. Les schémas avaient d'abord été créés avec `ACCOUNTADMIN`, et DLT comme dbt échouaient avec *Insufficient privileges to operate on schema*, même après plusieurs `GRANT`. Dans Snowflake, c'est le propriétaire du schéma qui peut y créer et remplacer des tables. Nous avons donc transféré la propriété des schémas à `PFPB_ROLE` (`GRANT OWNERSHIP ON SCHEMA … COPY CURRENT GRANTS`) ; on peut aussi les recréer directement avec ce rôle. Les identifiants Snowflake sont passés par des variables d'environnement, avec `DLT_DESTINATION=snowflake` et `DBT_TARGET=prod`.
+
 ## Ingestion avec DLT
 
-Chaque table est déclarée dans `loads.py` comme une ressource de la source `wwi`. Voici les deux premières, les autres suivent le même modèle :
+Les identifiants de SQL Server et de Snowflake sont dans `.dlt/secrets.toml`, qui n'est pas versionné (figure [@fig:secrets]). Chaque table est déclarée dans `loads.py` comme une ressource de la source `wwi`. Voici les deux premières, les autres suivent le même modèle :
+
+![Fichier `.dlt/secrets.toml` (valeurs masquées)](../../captures/Capture5.png){#fig:secrets width=85%}
 
 ``` {.python #code:dlt caption="Source DLT (defs/mssql_ingestion/loads.py)"}
 @dlt.source(name="wwi")
@@ -29,15 +41,11 @@ def wwi_source():
     )
 ```
 
-Les petites tables de référence sont rechargées entièrement (`replace`). Pour les commandes, les factures et leurs lignes, le chargement est incrémental : DLT retient la dernière valeur de `LastEditedWhen` et ne relit ensuite que les lignes modifiées, et `merge` évite les doublons grâce à la clé primaire. Les colonnes de type `geography` (comme `DeliveryLocation`) sont exclues parce que DLT ne sait pas les convertir ; au début elles provoquaient des avertissements à chaque chargement. Les identifiants SQL Server sont dans `.dlt/secrets.toml`, qui n'est pas versionné (figure [@fig:secrets]). La figure [@fig:geo] montre les avertissements du premier chargement.
+Les petites tables de référence sont rechargées entièrement (`replace`). Pour les commandes, les factures et leurs lignes, le chargement est incrémental : DLT retient la dernière valeur de `LastEditedWhen` et ne relit ensuite que les lignes modifiées, et `merge` évite les doublons grâce à la clé primaire. Les colonnes de type `geography` (comme `DeliveryLocation`) sont exclues parce que DLT ne sait pas les convertir. Lors du premier chargement vers Snowflake, elles provoquaient les avertissements de la figure [@fig:geo].
 
-![Fichier `.dlt/secrets.toml` (valeurs masquées)](../../captures/Capture5.png){#fig:secrets width=65%}
-
-![Avertissements DLT sur les colonnes `geography`](../../captures/Capture6.png){#fig:geo width=65%}
+![Avertissements DLT sur les colonnes `geography` au premier chargement](../../captures/Capture6.png){#fig:geo width=85%}
 
 Un point qui nous a fait perdre du temps : DLT renomme les tables et les colonnes en snake_case (`OrderLines` devient `order_lines`, `CustomerID` devient `customer_id`). Nos premiers modèles dbt utilisaient les noms d'origine et ne trouvaient pas les tables. Dans les sources dbt, nous avons donc gardé le nom SQL Server comme nom logique et ajouté le vrai nom avec `identifier`. Cela permet aussi à Dagster de relier automatiquement les actifs DLT aux modèles dbt.
-
-![Étape DLT dans Dagster lors du run sur Snowflake (4 min 33 s)](../../captures/Capture14.png){#fig:dlt width=70%}
 
 ## Transformations avec dbt
 
@@ -74,15 +82,21 @@ Les tests sont déclarés dans les fichiers YAML de documentation :
               arguments: {to: ref('dim_products'), field: product_id}
 ```
 
-Le test `unique` sur la clé vérifie qu'aucune jointure n'a dupliqué de lignes, et `relationships` vérifie que chaque vente pointe vers un produit qui existe. Il y a dix-huit tests au total. `dbt build` exécute les 13 modèles et les tests dans l'ordre (31 nœuds).
+Le test `unique` sur la clé vérifie qu'aucune jointure n'a dupliqué de lignes, et `relationships` vérifie que chaque vente pointe vers un produit qui existe. Il y a dix-huit tests au total, et `dbt build` exécute les 13 modèles et les tests dans l'ordre (31 nœuds).
 
-![Lignage dbt, des sources Bronze aux tables Gold](figures/dbt_lineage.png){#fig:lineage width=85%}
+La figure [@fig:lineage] montre le lignage des modèles.
+
+![Lignage dbt, des sources Bronze aux tables Gold](figures/dbt_lineage.png){#fig:lineage width=100%}
 
 ## Orchestration avec Dagster
 
 Les deux composants sont déclarés dans des fichiers `defs.yaml`. Pour dbt, il suffit d'indiquer le dossier du projet et la commande `build`. Au début, notre fichier s'appelait `defs.yml` : Dagster l'ignorait sans afficher d'erreur et l'étape dbt n'apparaissait pas. C'est `dg list defs` qui nous a permis de voir ce qui était vraiment chargé (figure [@fig:dglist]).
 
-![Définitions chargées, vues avec `dg list defs`](../../captures/Capture7.png){#fig:dglist width=55%}
+![Définitions chargées, vues avec `dg list defs`](../../captures/Capture7.png){#fig:dglist width=75%}
+
+La cible `prod` du profil dbt pointe vers Snowflake avec le rôle `PFPB_ROLE`. Avant le premier run, `dbt debug` nous a permis de vérifier la connexion (figure [@fig:debug]).
+
+![Connexion à Snowflake vérifiée avec `dbt debug`](../../captures/Capture8.png){#fig:debug width=90%}
 
 ``` {.python #code:schedule caption="Job et planification (defs/schedules.py)"}
 pipeline_complet = dg.define_asset_job(name="pipeline_complet", selection="*")
@@ -94,49 +108,49 @@ schedule_quotidien = dg.ScheduleDefinition(
 )
 ```
 
-Le job sélectionne tous les actifs, et Dagster les lance dans l'ordre du lignage : DLT d'abord, puis dbt. Il est planifié tous les jours à 2 h, heure de Dakar. Le graphe des actifs (figure [@fig:dlineage]) montre la chaîne complète, des tables DLT jusqu'aux tables Gold. L'interface se lance avec `dg dev` (figure [@fig:dgdev]) et s'ouvre sur la page de suivi des runs (figure [@fig:overview]). Le run est ensuite lancé depuis l'interface (figures [@fig:start] et [@fig:steps]). L'étape dbt termine avec tous les contrôles passés (figure [@fig:runtdbt]). Le run complet sur Snowflake a duré 7 min 28 s, dont 4 min 33 s pour DLT et 23 s pour dbt (figure [@fig:run]).
+Le job sélectionne tous les actifs, et Dagster les lance dans l'ordre du lignage : DLT d'abord, puis dbt. Il est planifié tous les jours à 2 h, heure de Dakar.
 
-![Lignage des actifs dans Dagster](figures/dagster_lineage.png){#fig:dlineage width=40%}
+L'interface se lance avec `dg dev` (figure [@fig:dgdev]) et s'ouvre sur la page de suivi des runs (figure [@fig:overview]). Le graphe des actifs (figure [@fig:dlineage]) montre la chaîne complète, des tables DLT jusqu'aux tables Gold.
 
-![Lancement de l'interface avec `dg dev`](../../captures/Capture9.png){#fig:dgdev width=70%}
+![Lancement de l'interface avec `dg dev`](../../captures/Capture9.png){#fig:dgdev width=90%}
 
-![Page de suivi des runs dans Dagster](../../captures/Capture10.png){#fig:overview width=70%}
+![Page de suivi des runs dans Dagster](../../captures/Capture10.png){#fig:overview width=90%}
 
-![Démarrage du run](../../captures/Capture12.png){#fig:start width=70%}
+![Lignage des actifs dans Dagster](figures/dagster_lineage.png){#fig:dlineage width=45%}
 
-![Étapes du run](../../captures/Capture13.png){#fig:steps width=70%}
+Le run sur Snowflake a ensuite été lancé depuis l'interface (figures [@fig:start] et [@fig:steps]). L'étape DLT a chargé les dix tables dans `BRONZE` en 4 min 33 s (figure [@fig:dlt]), puis l'étape dbt a construit `SILVER` et `GOLD` en 23,28 s avec tous les contrôles passés (figure [@fig:runtdbt]). Le run complet a duré 7 min 28 s (figure [@fig:run]).
 
-![Étape dbt terminée, contrôles passés (23,28 s)](../../captures/Capture15.png){#fig:runtdbt width=70%}
+![Démarrage du run](../../captures/Capture12.png){#fig:start width=90%}
 
-![Run complet du job `pipeline_complet` sur Snowflake](../../captures/Capture16.png){#fig:run width=70%}
+![Étapes du run](../../captures/Capture13.png){#fig:steps width=90%}
 
-## Passage à Snowflake
+![Étape DLT terminée (4 min 33 s)](../../captures/Capture14.png){#fig:dlt width=90%}
 
-Côté code, il a suffi de changer `DLT_DESTINATION` et `DBT_TARGET` et de renseigner les identifiants Snowflake dans des variables d'environnement. `dbt debug` a confirmé la connexion (figure [@fig:debug]). Nous avons créé un rôle `PFPB_ROLE` avec l'usage de la base `PROJET_FINAL_PRATIQUE_BI` et du warehouse `COMPUTE_WH` (taille XSMALL, suspendu après 60 s d'inactivité).
+![Étape dbt terminée, contrôles passés (23,28 s)](../../captures/Capture15.png){#fig:runtdbt width=90%}
 
-![Connexion à Snowflake vérifiée avec `dbt debug`](../../captures/Capture8.png){#fig:debug width=70%}
+![Run complet du job `pipeline_complet`](../../captures/Capture16.png){#fig:run width=90%}
 
-Le vrai problème a été les droits. Nous avions créé les schémas avec `ACCOUNTADMIN`, et DLT comme dbt échouaient avec *Insufficient privileges to operate on schema*, même après plusieurs `GRANT`. Dans Snowflake, c'est le propriétaire du schéma qui peut y créer et remplacer des tables. La solution a été de transférer la propriété des schémas à `PFPB_ROLE` (`GRANT OWNERSHIP ON SCHEMA … COPY CURRENT GRANTS`), ou de les recréer avec ce rôle.
+## Vérification dans Snowflake
 
-Après le run, nous avons compté les lignes de chaque table dans Snowsight (figure [@fig:counts]) et vérifié le schéma `GOLD` (figures [@fig:gold] et [@fig:preview]).
+Après le run, nous avons compté les lignes de chaque table dans Snowsight (figure [@fig:counts]) et vérifié le schéma `GOLD`, qui appartient bien à `PFPB_ROLE` (figures [@fig:gold] et [@fig:preview]).
 
-![Nombre de lignes par table dans Snowflake](../../captures/Capture17.png){#fig:counts width=70%}
+![Nombre de lignes par table dans Snowflake](../../captures/Capture17.png){#fig:counts width=90%}
 
-![Schéma `GOLD` dans Snowsight, avec `PFPB_ROLE` comme propriétaire](../../captures/Capture18.png){#fig:gold width=70%}
+![Schéma `GOLD` dans Snowsight, avec `PFPB_ROLE` comme propriétaire](../../captures/Capture18.png){#fig:gold width=90%}
 
-![Aperçu de la table `FCT_SALES`](figures/snowsight_fct_sales.png){#fig:preview width=70%}
+![Aperçu de la table `FCT_SALES`](figures/snowsight_fct_sales.png){#fig:preview width=90%}
 
 ## Application WWI Insight
 
 L'application est en Streamlit et se lance avec `streamlit run presentation_app/app.py` (figure [@fig:strun]). Elle a une page d'accueil avec quelques chiffres calculés sur la couche Gold (figure [@fig:home]), une connexion avec inscription, et un espace où l'utilisateur range ses questions dans des dossiers. Les comptes et les analyses sont stockés dans une petite base SQLite, avec des mots de passe hachés en bcrypt. Pour ne pas être déconnecté quand on recharge la page, un jeton de session valable sept jours est gardé dans l'adresse.
 
-![Lancement de l'application](../../captures/Capture19.png){#fig:strun width=55%}
+![Lancement de l'application](../../captures/Capture19.png){#fig:strun width=75%}
 
-![Page d'accueil connectée à Snowflake](../../captures/Capture20.png){#fig:home width=70%}
+![Page d'accueil connectée à Snowflake](../../captures/Capture20.png){#fig:home width=90%}
 
 La page « À propos » rappelle le cadre du projet (figure [@fig:about]).
 
-![Page « À propos »](../../captures/Capture21.png){#fig:about width=70%}
+![Page « À propos »](../../captures/Capture21.png){#fig:about width=90%}
 
 ### Génération du SQL
 
@@ -185,6 +199,6 @@ On enlève d'abord les balises Markdown que le modèle ajoute parfois. La requê
 
 La figure [@fig:ollama] montre une question libre posée sur Snowflake : « Les 10 produits les plus vendus ? ». Ollama a mis 36,5 s pour écrire le SQL. L'onglet SQL (figure [@fig:sql]) montre une requête correcte : somme de `quantity` dans `fct_sales`, jointure avec `dim_products`, tri décroissant. Le premier produit (*Black and orange fragile despatch tape 48mmx75m*, 207 324 unités) est le même que celui obtenu avec une requête écrite à la main.
 
-![Réponse à une question libre, SQL généré par Ollama](../../captures/capture22.png){#fig:ollama width=75%}
+![Réponse à une question libre, SQL généré par Ollama](../../captures/capture22.png){#fig:ollama width=95%}
 
-![Requête générée, onglet SQL](../../captures/Capture23.png){#fig:sql width=70%}
+![Requête générée, onglet SQL](../../captures/Capture23.png){#fig:sql width=90%}

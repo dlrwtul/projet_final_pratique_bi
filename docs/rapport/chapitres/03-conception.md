@@ -25,4 +25,4 @@ Le modèle (figure [@fig:etoile]) a deux tables de faits :
 
 Elles partagent les dimensions `dim_customers`, `dim_products` et `dim_salespeople`, plus une dimension `dim_date` qui contient chaque jour de 2013 à 2016. Nous avons fixé le chiffre d'affaires comme `quantity × unit_price` hors taxes, et cette définition est reprise à la fois dans la documentation dbt et dans la consigne envoyée au modèle de langage.
 
-Le choix entre DuckDB (développement) et Snowflake (production) se fait seulement par variables d'environnement : `DLT_DESTINATION` pour DLT et `DBT_TARGET` pour dbt.
+La destination est choisie par variables d'environnement (`DLT_DESTINATION` pour DLT, `DBT_TARGET` pour dbt). Le code peut aussi écrire dans un fichier DuckDB pour des tests locaux, mais tout ce qui est présenté dans ce rapport a été exécuté sur Snowflake.

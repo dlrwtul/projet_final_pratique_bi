@@ -6,4 +6,4 @@ Le sujet du projet part de ce constat. Il demande de construire une *Modern Data
 
 La question à laquelle nous avons essayé de répondre est donc la suivante : comment automatiser la chaîne qui va de la base source jusqu'à un modèle d'analyse, puis permettre d'interroger ce modèle en français sans connaître SQL ?
 
-Nous avons d'abord fait fonctionner toute la chaîne en local avec DuckDB, pour ne pas consommer de crédits pendant les essais, puis nous l'avons basculée sur Snowflake. Le chapitre 1 présente rapidement les notions et les outils utilisés. Le chapitre 2 décrit les données et l'architecture. Le chapitre 3 détaille la mise en œuvre avec quelques extraits de code, et le chapitre 4 présente les résultats, les problèmes rencontrés et les limites.
+Toute la chaîne tourne sur Snowflake. Le chapitre 1 présente rapidement les notions et les outils utilisés. Le chapitre 2 décrit les données et l'architecture. Le chapitre 3 détaille la mise en œuvre avec quelques extraits de code, et le chapitre 4 présente les résultats, les problèmes rencontrés et les limites.

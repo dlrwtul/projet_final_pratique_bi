@@ -2,7 +2,7 @@
 
 ## ELT et Modern Data Platform
 
-Dans un entrepôt classique (ETL), les données sont transformées avant d'être chargées. Avec les entrepôts cloud comme Snowflake, le stockage coûte peu et la puissance de calcul se loue à la demande. On charge donc d'abord les données brutes, puis on les transforme directement dans l'entrepôt en SQL : c'est l'approche ELT. Une Modern Data Platform regroupe autour de l'entrepôt plusieurs outils spécialisés, un par étape, que l'on peut remplacer séparément. C'est d'ailleurs ce qui nous a permis de passer de DuckDB à Snowflake sans réécrire le projet.
+Dans un entrepôt classique (ETL), les données sont transformées avant d'être chargées. Avec les entrepôts cloud comme Snowflake, le stockage coûte peu et la puissance de calcul se loue à la demande. On charge donc d'abord les données brutes, puis on les transforme directement dans l'entrepôt en SQL : c'est l'approche ELT. Une Modern Data Platform regroupe autour de l'entrepôt plusieurs outils spécialisés, un par étape, que l'on peut remplacer séparément.
 
 ## Architecture Médaillon
 

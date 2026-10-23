@@ -41,9 +41,6 @@ Tables introuvables dans dbt       `identifier` dans les sources dbt
 
 Étape dbt absente de Dagster       renommer `defs.yml` en `defs.yaml`
 
-`$HOME` non remplacé dans le       `expandvars` dans le code, `replace`
-chemin DuckDB (.env)               dans le profil dbt
-
 *Insufficient privileges* sur      propriété des schémas donnée à
 les schémas Snowflake              `PFPB_ROLE`
 
