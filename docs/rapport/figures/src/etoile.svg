@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="640" viewBox="0 0 1100 640" font-family="IBM Plex Sans, sans-serif">
+  <rect width="1100" height="640" fill="#FFFFFF"/>
+  <!-- Liaisons (sous les tables) -->
+  <g stroke="#9AA6B6" stroke-width="1.6" fill="none">
+    <path d="M300 125 H420 V230"/>          <!-- dim_customers -> fct_sales -->
+    <path d="M300 520 H420 V420"/>          <!-- dim_salespeople -> fct_sales -->
+    <path d="M550 325 H590"/>               <!-- fct_sales -> dim_products -->
+    <path d="M800 325 H760"/>               <!-- fct_invoice_lines -> dim_products -->
+    <path d="M300 125 H370 V95 H930 V230"/>  <!-- dim_customers -> fct_invoice_lines -->
+    <path d="M425 420 V592 H560" stroke-dasharray="5 4"/> <!-- dim_date -> fct_sales -->
+    <path d="M935 400 V592 H790" stroke-dasharray="5 4"/> <!-- dim_date -> fct_invoice_lines -->
+  </g>
+
+  <!-- Faits -->
+  <g>
+    <rect x="300" y="230" width="250" height="190" rx="6" fill="#EAF4F9" stroke="#0B6E99" stroke-width="1.5"/>
+    <text x="316" y="258" font-size="17" font-weight="600" fill="#0F1B2D">fct_sales</text>
+    <text x="316" y="278" font-size="12" fill="#0B6E99">231 412 lignes · ligne de commande</text>
+    <g font-family="IBM Plex Mono, monospace" font-size="13" fill="#0F1B2D">
+      <text x="316" y="306">order_line_id</text><text x="316" y="326">order_date</text>
+      <text x="316" y="346">customer_id, product_id</text><text x="316" y="366">salesperson_id</text>
+      <text x="316" y="386">quantity, unit_price</text><text x="316" y="406">sales_amount_excl_tax</text>
+    </g>
+  </g>
+  <g>
+    <rect x="800" y="230" width="270" height="170" rx="6" fill="#EAF4F9" stroke="#0B6E99" stroke-width="1.5"/>
+    <text x="816" y="258" font-size="17" font-weight="600" fill="#0F1B2D">fct_invoice_lines</text>
+    <text x="816" y="278" font-size="12" fill="#0B6E99">228 265 lignes · ligne facturée</text>
+    <g font-family="IBM Plex Mono, monospace" font-size="13" fill="#0F1B2D">
+      <text x="816" y="306">invoice_line_id</text><text x="816" y="326">invoice_date</text>
+      <text x="816" y="346">customer_id, product_id</text><text x="816" y="366">extended_price</text>
+      <text x="816" y="386">line_profit</text>
+    </g>
+  </g>
+
+  <!-- Dimensions -->
+  <g>
+    <rect x="40" y="60" width="260" height="130" rx="6" fill="#FFFFFF" stroke="#0F1B2D" stroke-width="1.2"/>
+    <text x="56" y="88" font-size="16" font-weight="600" fill="#0F1B2D">dim_customers</text>
+    <text x="56" y="107" font-size="12" fill="#5A6678">663 clients</text>
+    <g font-family="IBM Plex Mono, monospace" font-size="13" fill="#0F1B2D">
+      <text x="56" y="135">customer_id</text><text x="56" y="155">customer_name</text><text x="56" y="175">delivery_city</text>
+    </g>
+  </g>
+  <g>
+    <rect x="590" y="250" width="170" height="150" rx="6" fill="#FFFFFF" stroke="#0F1B2D" stroke-width="1.2"/>
+    <text x="606" y="278" font-size="16" font-weight="600" fill="#0F1B2D">dim_products</text>
+    <text x="606" y="297" font-size="12" fill="#5A6678">227 articles</text>
+    <g font-family="IBM Plex Mono, monospace" font-size="13" fill="#0F1B2D">
+      <text x="606" y="325">product_id</text><text x="606" y="345">product_name</text><text x="606" y="365">brand</text><text x="606" y="385">unit_price</text>
+    </g>
+  </g>
+  <g>
+    <rect x="40" y="455" width="260" height="130" rx="6" fill="#FFFFFF" stroke="#0F1B2D" stroke-width="1.2"/>
+    <text x="56" y="483" font-size="16" font-weight="600" fill="#0F1B2D">dim_salespeople</text>
+    <text x="56" y="502" font-size="12" fill="#5A6678">10 vendeurs</text>
+    <g font-family="IBM Plex Mono, monospace" font-size="13" fill="#0F1B2D">
+      <text x="56" y="530">salesperson_id</text><text x="56" y="550">salesperson_name</text><text x="56" y="570">email_address</text>
+    </g>
+  </g>
+  <g>
+    <rect x="560" y="560" width="230" height="64" rx="6" fill="#FFFFFF" stroke="#0F1B2D" stroke-width="1.2"/>
+    <text x="576" y="586" font-size="16" font-weight="600" fill="#0F1B2D">dim_date</text>
+    <text x="576" y="608" font-size="12" fill="#5A6678">1 461 jours · 2013 à 2016</text>
+  </g>
+  <text x="440" y="520" font-size="12" fill="#5A6678">jointure sur la date</text>
+</svg>
